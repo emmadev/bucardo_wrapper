@@ -1,0 +1,116 @@
+# List the plugins whose functionality you want to take advantage of.
+plugins:
+    - bucardo
+    - concurrency
+    - indexes
+    - mat_views
+    - retry
+
+# Set the connection info for databases here.  It will be used for all plugins.
+#
+# These parameters are accepted: bucardo, primary, secondary
+databases:
+    bucardo:
+        database_owner: bucardo
+
+        # fallback_db should be the name of a database that already exists
+        # before the script is run.
+        fallback_db: postgres
+        host: localhost
+        port: 5432
+    primary:
+        database_owner: <db_owner>
+        dbname: <db_name>
+        host: <host>
+        port: 5432
+
+        # Set cascade to true if both of these are true:
+        # - You are setting up a replication topology of A -> B -> C,
+        #   where changes propagate from A to B and from B to C.
+        # - The current config is for managing the B -> C replication.
+        cascade: False
+
+    secondary:
+        database_owner: <db2_owner>
+        dbname: <db2_name>
+        host: <db2_host>
+        port: 5432
+
+        # This is a separate setting because there are two relevant sets of
+        # permissions, and in RDS there may not be a single user that has all
+        # necessary privileges.
+        schema_owner: <schema_owner>
+
+        # Set cascade to true if both of these are true:
+        # - You are setting up a replication topology of A -> B -> C,
+        #   where changes propagate from A to B and from B to C.
+        # - The current config is for managing the A -> B replication.
+        cascade: False
+
+# This section configures basic bucardo replication functionality.
+#
+# These parameters are accepted: copy_data, replication_name, replication_objects
+bucardo:
+    # Whether to do an initial data copy from primary to secondary.
+    # Possible values are 'always', 'never', and 'empty'.
+    copy_data: empty
+
+    # An arbitrary name that the user chooses.
+    # It only has to be unique when multiple jobs are running simultaneously.
+    replication_name: migrate_db
+
+    # This tells bucardo which objects to replicate by converting the values given
+    # to WHERE clause conditions in a query on pg_catalog tables.
+    # E.g., the default namespace include below becomes:
+    #   "AND pg_namespace.nspname IN ('test1','test2')"
+    replication_objects:
+        namespace_include:
+          - test1
+          - test2
+        namespace_exclude: []
+
+        # Table inclusion and exclusion cannot be namespace/schema qualified.
+        # This means that a table you wish to include in one namespace and exclude
+        # in another will require the creation of a second config file.
+        table_include: []
+        table_exclude: []
+
+# Optional plugin configuration below, alphabetical by section name.
+
+# This section configures the logic for allowing multiple bucardo jobs to run
+# concurrently, by setting a custom database name for bucardo.
+#
+# These parameters are accepted: bucardo_dbname
+concurrency:
+    # bucardo_dbname has to be unique when multiple jobs are running simultaneously.
+    bucardo_dbname: mybucardo
+
+# This section configures the logic for temporarily dropping large indexes for
+# data copy.
+#
+# These parameters are accepted: replication_objects, larger_than
+#
+# If replication_objects is not provided, the settings in the bucardo section
+# above will be used.
+indexes:
+    # larger_than accepts formats of '10 GB', '10GB', and '10 gigabyte',
+    # but not '10 gigabytes'.
+    # larger_than refers to the table size, not the index size.
+    larger_than: 10 GB
+
+# This section configures the logic for refreshing materialized views on the
+# standby.
+#
+# These parameters are accepted: replication_objects
+#
+# If replication_objects is not provided, the settings in the bucardo section
+# above will be used.
+mat_views: {}
+
+# This section configures the logic for graceful timeout and retry of trigger
+# adding and dropping.
+#
+# These parameters are accepted: timeout
+retry:
+    timeout: 10000
+
