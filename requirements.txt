@@ -1,6 +1,4 @@
 PyYAML>=5.4.1,<6
-boto3>=1.17.29,<2
 numpy # required by quantities
 psycopg2-binary>=2.8.6,<3
 quantities>=0.12.4,<1
-redis>=3.5.3,<4

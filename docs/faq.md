@@ -32,10 +32,6 @@ Q: **How do I minimize outages caused by trigger-adding and trigger-dropping?**
 
 A: Use the `retry` plugin.
 
-Q: **How do I do redis updates when migrating an audience shard?**
-
-A: Use the `shard_map` plugin.
-
 Q: **How do I update my materialized views on the secondary database?**
 
 A: Note that bucardo won't handle this. The materialized views on the secondary will
