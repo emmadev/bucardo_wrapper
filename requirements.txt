@@ -1,0 +1,4 @@
+PyYAML>=5.4.1,<6
+numpy # required by quantities
+psycopg2-binary>=2.8.6,<3
+quantities>=0.12.4,<1
