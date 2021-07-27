@@ -25,6 +25,9 @@ It's also a wrapper around other database migration tasks, including any the
 user might choose to develop. See the Plugins section for enabling and
 disabling plugins, and `docs/plugins.md` for developing plugins.
 
+## License
+Content is released under the [MIT](LICENSE) license.
+
 # Config
 
 The configuration is done in a YAML config file. This is the file the user
