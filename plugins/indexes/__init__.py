@@ -136,11 +136,19 @@ class Indexes(Plugin):
         """Given a list of tuples of schemas and index names, issue drop commands on the secondary."""
         conn = psycopg2.connect(self.secondary_schema_owner_conn_pg_format)
         for index in indexes:
-            print(f'Dropping {index[0]}.{index[1]}.{index[2]}')
-            query = sql.SQL('DROP INDEX IF EXISTS {schemaname}.{indexname}').format(
-                schemaname=sql.Identifier(index[0]),
-                indexname=sql.Identifier(index[2]),
-            )
+            if 'UNIQUE' in index[3]:
+                print(f'Dropping {index[0]}.{index[1]}.{index[2]}')
+                query = sql.SQL('ALTER TABLE {schemaname}.{tablename} DROP CONSTRAINT {indexname}').format(
+                    schemaname=sql.Identifier(index[0]),
+                    tablename=sql.Identifier(index[1]),
+                    indexname=sql.Identifier(index[2]),
+                )
+            else:
+                print(f'Dropping {index[0]}.{index[1]}.{index[2]}')
+                query = sql.SQL('DROP INDEX IF EXISTS {schemaname}.{indexname}').format(
+                    schemaname=sql.Identifier(index[0]),
+                    indexname=sql.Identifier(index[2]),
+                )
             try:
                 with conn.cursor() as cur:
                     cur.execute(query)
@@ -150,6 +158,41 @@ class Indexes(Plugin):
                 raise
         conn.close()
 
+    def _get_constraint_defs(self, table):
+        """Given a table, return a list of constraint definitions for uniqueness constraints on that table.
+
+        The table must be larger in size than the threshold for a large table,
+        which is defined in `__init__`.
+        replication.
+        """
+
+        query = sql.SQL(
+            """SELECT pn.nspname, prel.relname, pc.conname
+                    , 'ALTER TABLE ' || pn.nspname || '.' || prel.relname ||
+                      ' ADD CONSTRAINT ' || pc.conname || ' ' || pg_get_constraintdef(pc.OID)
+                FROM pg_constraint pc
+                    JOIN pg_namespace pn ON pn.OID = pc.connamespace
+                    JOIN pg_class prel ON prel.OID = pc.conrelid
+                WHERE pn.nspname = %s
+                    AND prel.relname = %s
+                    AND pc.contype = 'u'
+                    AND pg_relation_size(pn.nspname || '.' || prel.relname) > %s
+            """
+        )
+
+        # Convert the threshold to bytes with no unit specified, for passing to Postgres.
+        larger_than = self._convert_units(self.cfg['indexes']['larger_than'])
+
+        conn = psycopg2.connect(self.primary_conn_pg_format)
+        constraint_definitions = []
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, [table[0], table[1], larger_than])
+                constraint_definitions = cur.fetchall()
+        finally:
+            conn.close()
+        return constraint_definitions
+
     def _get_index_defs(self, table):
         """Given a table, return a list of index definitions for indexes on that table.
 
@@ -157,6 +200,9 @@ class Indexes(Plugin):
         which is defined in `__init__`.  The index must not be a primary key, because
         bucardo requires all tables have primary keys in order to perform its
         replication.
+
+        The index must not be associated with a uniqueness constraint. Those are
+        handled by the _get_constraint_defs() function.
         """
 
         query = sql.SQL(
@@ -168,7 +214,7 @@ class Indexes(Plugin):
                 FROM pg_constraint pc
                 WHERE pc.conrelid = (pi.schemaname || '.' || pi.tablename)::regclass::oid
                     AND pc.conname = pi.indexname
-                    AND pc.contype = 'p'
+                    AND pc.contype IN ('p','u')
             )
             AND pg_relation_size(pi.schemaname || '.' || pi.tablename) > %s
             """
@@ -216,20 +262,6 @@ class Indexes(Plugin):
                 raise
         conn.close()
 
-        # Check that we backed up the same number of indexes as we plan to drop.  Abort if not.
-        expected_indexes = len(index_definitions)
-        stored_indexes = self._check_num_indexes(index[0], index[1])
-        if expected_indexes == stored_indexes:
-            print(f'Large index DDL for indexes on {index[0]}.{index[1]} stored in the bucardo database.')
-            return
-        else:
-            raise Exception(
-                f'Tried to store {expected_indexes} index(es) for {index[0]}.{index[1]} '
-                f'in manage_indexes.index_definitions on the bucardo database, '
-                f'but {stored_indexes} index definition(s) were stored instead. '
-                f'Aborting without dropping indexes. Please investigate.'
-            )
-
     def _wait_on_data_copy(self):
         """Grep the bucardo log to see how many syncs have finished, then wait for that number to increase."""
         print('Waiting on initial data copy.', end='', flush=True)
@@ -268,22 +300,47 @@ class Indexes(Plugin):
         table, the script will abort without dropping indexes.
 
         If everything checks out, the script executes the drops.
+
+        It then repeats this logic for uniqueness constraints, which have unique
+        indexes under the hood.
         """
 
         # Find all the tables being replicated.  'r' is for "relation".
         tables = self._find_objects('r', self.repl_objects)
         if tables:
-            # Get the index definitions for each table.
             for table in tables:
+                # Back up the index definitions.
                 index_definitions = self._get_index_defs(table)
-                # Back up the indexes, then drop them.
-                if index_definitions:
-                    self._store_index_defs(index_definitions)
-                    self._execute_drops(index_definitions)
+                self._store_index_defs(index_definitions)
+                # Back up the constraint definitions.
+                constraint_definitions = self._get_constraint_defs(table)
+                self._store_index_defs(constraint_definitions)
+
+                # Check that we backed up the same number of indexes and constraints as we plan to drop.  Abort if not.
+                all_ddl = index_definitions + constraint_definitions
+                expected_indexes = len(all_ddl)
+
+                stored_indexes = self._check_num_indexes(table[0], table[1])
+                if expected_indexes == stored_indexes:
+                    print(f'Large index DDL for indexes on {table[0]}.{table[1]} stored in the bucardo database.')
                 else:
-                    print(f'No large indexes found on {table[0]}.{table[1]}.')
+                    raise Exception(
+                        f'Tried to store {expected_indexes} index(es) for {table[0]}.{table[1]} '
+                        f'in manage_indexes.index_definitions on the bucardo database, '
+                        f'but {stored_indexes} index definition(s) were stored instead. '
+                        f'Aborting without dropping indexes. Please investigate.'
+                    )
+
+                # Drop the indexes and constraints.
+                self._execute_drops(index_definitions)
+                self._execute_drops(constraint_definitions)
+
+                if not index_definitions and not constraint_definitions:
+                    print(f'No large indexes or uniqueness constraints found on {table[0]}.{table[1]}.')
+
         else:
             print('No tables found.')
+
 
     def install(self):
         """Install the dependencies for index management on the bucardo database.
