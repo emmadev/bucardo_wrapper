@@ -311,6 +311,7 @@ class Indexes(Plugin):
 
         # Find all the tables being replicated.  'r' is for "relation".
         tables = self._find_objects('r', self.repl_objects)
+        safe_to_drop = False
         if tables:
             for table in tables:
                 # See if there's anything to drop for this table.
@@ -328,6 +329,7 @@ class Indexes(Plugin):
                     stored_indexes_count = self._check_num_indexes(table[0], table[1])
                     if expected_indexes_count == stored_indexes_count:
                         print(f'DDL for {table[0]}.{table[1]} backed up in the bucardo database.')
+                        safe_to_drop = True
                     else:
                         raise Exception(
                             f'Tried to store {expected_indexes_count} index(es) for {table[0]}.{table[1]} '
@@ -335,14 +337,15 @@ class Indexes(Plugin):
                             f'but {stored_indexes_count} index definition(s) were stored instead. '
                             'Aborting without dropping indexes. Please investigate.'
                         )
-
-                    # Drop the indexes and constraints.
-                    self._execute_ddl('drop')
                 else:
                     print(f'No large indexes or uniqueness constraints found on {table[0]}.{table[1]}.')
 
         else:
             print('No tables found.')
+        # Drop the indexes and constraints.
+        if safe_to_drop:
+            print('\nDropping large indexes and constraints...')
+            self._execute_ddl('drop')
 
     def install(self):
         """Install the dependencies for index management on the bucardo database.
