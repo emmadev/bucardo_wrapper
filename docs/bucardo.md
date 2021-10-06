@@ -81,6 +81,19 @@ For the B -> C stage, do the following:
 
 ## Kick Off Replication
 
+Note that it doesn't make sense to kick off the replication for B -> C until
+the replication for A -> B is complete, as you will then be replicating an
+empty B database.
+
+Likewise, if A -> B isn't complete, then searching for large indexes on B -> C
+won't find anything.
+
+Both `bucardo.start` and `indexes.drop` thus need to wait until A -> B is complete.
+
+Since Bucardo doesn't support cascading replication, the current setup is
+basically two completely separate replication jobs, from A -> B and B -> C,
+with the bare minimum of hacks to make sure new changes on A are propagated to C.
+
 ### A -> B
 
 For the A -> B stage, do the following:
@@ -89,7 +102,7 @@ For the A -> B stage, do the following:
 
 ### B -> C
 
-For the B -> C stage, do the following:
+Once the A -> B data copy is complete, for the B -> C stage, do the following:
 
 1. `bucardo.start`
 

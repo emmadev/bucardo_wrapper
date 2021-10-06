@@ -43,6 +43,15 @@ data copy completion prevents a human from having to monitor it and manually
 kick off index recreation, and also avoids potentially having several hours
 spent idle that could have been better spent recreating indexes.
 
+## Cascading Replication
+
+If you're replicating from database A to B to C, the B -> C job will check the
+size of indexes on B. A is not specified in the B -> C config, so the job has
+no way of knowing about A. If the data copy and index recreation aren't
+finished on B, then running indexes.install on B -> C will not detect large
+indexes on B. This means it is necessary to wait until A -> B is finished
+before starting B -> C.
+
 # Functions
 
 ## install
