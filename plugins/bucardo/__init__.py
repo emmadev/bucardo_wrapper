@@ -8,6 +8,7 @@ Bucardo: Basic bucardo replication functionality.
 """
 
 import os
+import time
 
 import psycopg2
 from psycopg2 import sql
@@ -370,4 +371,10 @@ class Bucardo(Plugin):
                 conn.commit()
         finally:
             conn.close()
+
+        if self.cfg['databases']['primary'].get('cascade'):
+            print('\n\033[1mWarning:\033[0m You may have just broken replication from A to B in your A->B->C setup.')
+            print('To get it working again, see docs/bucardo.md, Cascading Replication, Changing Topology.')
+            time.sleep(3)
+
         print('Uninstalled bucardo.')

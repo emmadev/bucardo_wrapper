@@ -81,6 +81,19 @@ For the B -> C stage, do the following:
 
 ## Kick Off Replication
 
+Note that it doesn't make sense to kick off the replication for B -> C until
+the replication for A -> B is complete, as you will then be replicating an
+empty B database.
+
+Likewise, if A -> B isn't complete, then searching for large indexes on B -> C
+won't find anything.
+
+Both `bucardo.start` and `indexes.drop` thus need to wait until A -> B is complete.
+
+Since Bucardo doesn't support cascading replication, the current setup is
+basically two completely separate replication jobs, from A -> B and B -> C,
+with the bare minimum of hacks to make sure new changes on A are propagated to C.
+
 ### A -> B
 
 For the A -> B stage, do the following:
@@ -89,12 +102,53 @@ For the A -> B stage, do the following:
 
 ### B -> C
 
-For the B -> C stage, do the following:
+Once the A -> B data copy is complete, for the B -> C stage, do the following:
 
 1. `bucardo.start`
 
 You should now have cascading replication. Once data copying is complete,
 double check that changes on A are appearing on C.
+
+## Changing Topology
+
+If you have an A -> B -> C setup, and you run `bucardo.uninstall` from A to B,
+B -> C replication will continue to function as expected.
+
+But if you run `bucardo.uninstall` from B to C, A -> B will stop working. This is
+because A -> B is configured to propagate its changes to C, only there is no C,
+and it doesn't want C to fall behind, so it stops replicating and throws errors
+that you can see in the logs.
+
+If you want A -> B replication to continue working, there are a couple of
+manual steps you must follow.
+
+1. Connect to the bucardo database for A -> B. This is the one specified in
+`databases: bucardo:` in the YAML config file for A -> B replication.
+
+2. Run
+
+```
+UPDATE db SET makedelta = 'f' WHERE name = 'secondary_db';
+```
+
+3. Then run the bucardo wrapper script again, using the A -> B config:
+
+```
+python wrapper.py
+```
+
+4. Using the wrapper, restart bucardo:
+
+```
+bucardo.restart
+```
+
+Check the logs. After the restart, you should now have a working A -> B
+replication cluster.
+
+Changing `makedelta` tells bucardo not to pass the delta, i.e., the new changes
+to be replicated, on to a downstream database beyond the immediate replication
+setup.
 
 # Functions
 
