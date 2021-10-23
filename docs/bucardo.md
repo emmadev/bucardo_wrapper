@@ -218,6 +218,21 @@ plugin.
 
 ## Daemon Management
 
+### change\_config
+The `change_config` function in the bucardo plugin changes a setting in the
+bucardo config. The user will be prompted to enter the name of the setting they
+wish to change, such as 'log\_level', and the new value for the setting, such
+as 'verbose'. No input validation is performed by the wrapper. The name and new
+value are passed to bucardo, which attempts to make the change. If the value or
+setting are not valid, bucardo will throw an error.
+
+The change will not take effect until the config is reloaded, or, for some
+settings, until the daemon is restarted. See the `reload` and `restart` functions.
+
+### reload
+The `reload` function in the bucardo plugin reloads the bucardo config. The
+most common time to run this is after `change_config`.
+
 ### restart
 
 The `restart` function in the bucardo plugin stops the daemon and restarts it.
