@@ -24,6 +24,11 @@ databases:
         host: <host>
         port: 5432
 
+        # This is a separate setting because there are two relevant sets of
+        # permissions, and in RDS there may not be a single user that has all
+        # necessary privileges.
+        schema_owner: <schema_owner>
+
         # Set cascade to true if both of these are true:
         # - You are setting up a replication topology of A -> B -> C,
         #   where changes propagate from A to B and from B to C.

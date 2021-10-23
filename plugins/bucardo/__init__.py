@@ -256,7 +256,7 @@ class Bucardo(Plugin):
 
         # Bucardo puts three triggers on each table, with predictable names.
         triggers = ['bucardo_delta', f'bucardo_kick_{self.repl_name}', f'bucardo_note_trunc_{self.repl_name}']
-        conn = psycopg2.connect(self.primary_conn_pg_format)
+        conn = psycopg2.connect(self.primary_schema_owner_conn_pg_format)
         # Drop each trigger from each table.
         for table in tables:
             for trigger in triggers:
