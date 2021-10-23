@@ -266,6 +266,33 @@ Be aware of this, as this can affect your i/o, disk space, etc. on the
 database. In order to remove these triggers, you will need to run
 `drop_triggers`.
 
+# Reducing outage risks
+
+If you have high-volume write traffic consisting of many parallel COMMITs,
+bucardo can DDOS your database. In this scenario, the number of rows per commit
+doesn't matter, it's the number of simultaneous commits that cause the problem.
+
+The problem is that each time a commit happens, the kick trigger fires. The
+kick trigger issues a NOTIFY. In Postgres, NOTIFY takes out a lock of this
+type: "AccessExclusiveLock on object 0 of class 1262 of database 0". There is,
+as far as I can tell, only one such object. So too much concurrent activity all
+trying to get that same lock can cause a bottleneck.
+
+To avoid that, you can set `disable_kicking` in the `bucardo:primary` section
+of the config. What that will do is disable the kick trigger during the
+`add_triggers` action, and spawn a background process during `start` and
+`restart` to do the kicking instead. Kicking will be done once per second,
+using `watch`. This should be sufficient if you receive traffic consistently
+throughout the day, or if you don't mind bucardo checking for changes and not
+always finding them. (There is a small performance overhead to any needless
+activity.)
+
+The pid will be printed when `start` or `restart` is run. This pid isn't stored
+by the script and isn't managed by it. A new process is spawned each time you
+run `restart`. It's up to you to kill it.
+
+TODO: Write the pid to a pidfile and manage the process.
+
 # Logs and pidfiles
 
 Bucardo logs are written to `/var/log/bucardo`. This directory must exist and

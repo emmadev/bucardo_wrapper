@@ -9,6 +9,7 @@ Bucardo: Basic bucardo replication functionality.
 
 import os
 import time
+from subprocess import Popen, DEVNULL
 
 import psycopg2
 from psycopg2 import sql
@@ -126,6 +127,25 @@ class Bucardo(Plugin):
             f'add herd {self.repl_name} {tables} {sequences}'
         )
 
+    def _autokick(self):
+        """Automatically kick replication sync every second.
+
+        This means the database doesn't have to kick synchronously every time there's a commit.
+        Asynchronous kicking can be less resource-intensive than synchronous and prevent outages.
+        """
+        # Run 'kick' in the background forever.
+        pid = Popen(
+            [
+                'watch', '-n 1',
+                'bucardo', f'{self.bucardo_opts} {self.bucardo_conn_bucardo_format} kick {self.repl_name}'
+            ],
+            stdout=DEVNULL
+        ).pid
+        print(
+            f'The bucardo sync is being kicked every second by process {pid}.'
+            ' Stopping it is up to you.'
+        )
+
     def _configure_bucardo(self):
         """Tell bucardo where to log and write pidfiles.
 
@@ -160,16 +180,41 @@ class Bucardo(Plugin):
             f'set stopfile="{self.repl_name}_stopfile"'
         )
 
-    def _enable_cascade_triggers(self):
-        """Enable the kick trigger on the database that needs to propagate changes.
+    def _toggle_kick_triggers(self, enable_or_disable):
+        """Enable or disable the kick triggers.
+
+        The kick triggers are the ones that publish a NOTIFY event indicating
+        that new data has just come in and is available to be replicated.
+
+        Reasons for disabling:
+
+        Firing a NOTIFY takes out a lock on an object needed by all occurrences of
+        NOTIFY, even on different tables.  Too many concurrent writes can cause lock
+        contention on that shared object.  This can cause a self-DDOS.
+
+        If you disable automatic, synchronous kicking, you must run NOTIFY some other
+        way, or replication will fall behind. See the `_autokick` function for how this
+        plugin does it.
+
+        Reasons for enabling always:
 
         In order to enable cascading replication from database A to B to C, the B -> C
         replication stage needs to know that a change has just come into B.  Normally,
         changes trigger a notification to fire.  But on the B database, changes from
-        A -> B treat B as a replica, which means all triggers are disabled.  We can get
+        A -> B treat B as a replica, which means all triggers are disabled.  We get
         around this by enabling the kick bucardo trigger to fire 'always', which means
-        regardless of whether the database is an origin or a replica.
+        regardless of whether the database is an origin or a replica, on database B.
         """
+
+        if enable_or_disable == 'disable':
+            tgenabled = 'D'
+        elif enable_or_disable == 'enable always':
+            tgenabled = 'A'
+        else:
+            raise ValueError(
+                f'Invalid enable_or_disable value {enable_or_disable}. '
+                'Accepted values: "enable always", "disable".'
+            )
 
         # Get the list of tables.
         # 'r' is for relation in pg_class.relkind.
@@ -179,11 +224,11 @@ class Bucardo(Plugin):
         # changes come in to the primary database
         # (which is B in an A -> B-> C topology).
         trigger = f'bucardo_kick_{self.repl_name}'
-        trigger_not_enabled = False
-        conn = psycopg2.connect(self.primary_conn_pg_format)
+        trigger_needs_toggling = False
+        conn = psycopg2.connect(self.primary_schema_owner_conn_pg_format)
         # Update the trigger on each table.
         for table in tables:
-            # See if there's a trigger whose enabled value isn't 'A' (for 'always').
+            # See if there's a trigger whose enabled value isn't the one we want.
             query = sql.SQL(
                 """SELECT TRUE FROM pg_catalog.pg_trigger pt
                 JOIN pg_catalog.pg_class pc ON pc.OID = pt.tgrelid
@@ -191,20 +236,22 @@ class Bucardo(Plugin):
                 WHERE pn.nspname = %s
                     AND pc.relname = %s
                     AND pt.tgname = %s
-                    AND pt.tgenabled <> 'A'"""
+                    AND pt.tgenabled <> %s"""
             )
             try:
                 with conn.cursor() as cur:
-                    cur.execute(query, [table[0], table[1], trigger])
-                    trigger_not_enabled = cur.fetchall()
+                    cur.execute(query, [table[0], table[1], trigger, tgenabled])
+                    trigger_needs_toggling = cur.fetchall()
             except Exception:
                 conn.close()
                 raise
 
-            if trigger_not_enabled:
-                query = sql.SQL('ALTER TABLE {schema}.{table} ENABLE ALWAYS TRIGGER {trigger}').format(
+            if trigger_needs_toggling:
+                enabled = "DISABLE TRIGGER" if enable_or_disable == 'disable' else "ENABLE ALWAYS TRIGGER"
+                query = sql.SQL('ALTER TABLE {schema}.{table} {enabled} {trigger}').format(
                     schema=sql.Identifier(table[0]),
                     table=sql.Identifier(table[1]),
+                    enabled=sql.SQL(enabled),
                     trigger=sql.Identifier(trigger),
                 )
                 try:
@@ -220,6 +267,7 @@ class Bucardo(Plugin):
                     conn.close()
                     raise
         conn.close()
+        print('Kick triggers disabled.')
 
     def add_triggers(self):
         """Add triggers to tables on primary database."""
@@ -246,8 +294,11 @@ class Bucardo(Plugin):
         # Need to tweak one of the triggers if we want to replicate changes
         # that have come in from an upstream primary.
         if self.cfg['databases']['primary'].get('cascade'):
-            self._enable_cascade_triggers()
-        print('Triggers added')
+            self._toggle_kick_triggers('enable always')
+        # Need to disable one of the triggers if the user wants to reduce outage risk.
+        if self.cfg['databases']['primary'].get('disable_kicking'):
+            self._toggle_kick_triggers('disable')
+        print('Done adding triggers.')
 
     def change_config(self):
         """Change bucardo config setting. Prompts for user input."""
@@ -337,12 +388,16 @@ class Bucardo(Plugin):
         """Restart bucardo daemon."""
         print('Restarting daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} restart')
+        if self.cfg['databases']['primary'].get('disable_kicking'):
+            self._autokick()
         print('Daemon restarted.')
 
     def start(self):
         """Start bucardo daemon."""
         print('Starting daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} start')
+        if self.cfg['databases']['primary'].get('disable_kicking'):
+            self._autokick()
         print('Daemon started.')
 
     def status(self):
