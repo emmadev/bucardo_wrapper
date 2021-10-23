@@ -45,6 +45,7 @@ class Plugin():
         cfg: contents of the config file as a dictionary
         primary: config data for primary database connection
         primary_conn_pg_format: primary db connection string
+        primary_schema_owner_conn_pg_format: primary db connection string
         secondary: config data for secondary database connection
         secondary_db_owner_conn_pg_format: secondary db connection string
         secondary_schema_owner_conn_pg_format: secondary db connection string
@@ -80,6 +81,12 @@ class Plugin():
             user=self.bucardo['database_owner'],
         )
         self.primary_conn_pg_format = self._connect(self.primary, user=self.primary['database_owner'])
+        # This is a psycopg2 conn string for the primary database, used when we need to
+        # perform DDL on replicated tables, there isn't a superuser because it's RDS,
+        # and the "superuser" doesn't have the necessary permissions on the relevant
+        # tables.
+        self.primary_schema_owner_conn_pg_format = \
+            self._connect(self.primary, user=self.primary['schema_owner'])
         # This is a psycogp2 conn string for the secondary database, used when we need
         # "superuser" privs on an RDS database.
         self.secondary_db_owner_conn_pg_format = self._connect(self.secondary, user=self.secondary['database_owner'])
