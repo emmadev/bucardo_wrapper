@@ -30,8 +30,10 @@ class Bucardo(Plugin):
 
     Exported methods:
     add_triggers: add triggers to tables on primary database
+    change_config: change bucardo config setting
     drop_triggers: drop triggers from primary database
     install: install bucardo metadata
+    reload: reload bucardo daemon
     restart: restart bucardo daemon
     start: start bucardo daemon
     status: report status of bucardo daemon
@@ -247,6 +249,18 @@ class Bucardo(Plugin):
             self._enable_cascade_triggers()
         print('Triggers added')
 
+    def change_config(self):
+        """Change bucardo config setting. Prompts for user input."""
+        # Prompt for input.
+        self.setting_name = input('Name of the setting to change: ')
+        self.new_value = input('New value for the setting: ')
+        # Update the config using the bucardo daemon.
+        os.system(
+            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
+            f'set {self.setting_name}={self.new_value}'
+        )
+        print('You will need to reload or restart bucardo for the change to take effect.')
+
     def drop_triggers(self):
         """Drop triggers from primary database."""
         print('Dropping triggers. Warning: this may cause an outage. Ctrl-c to abort.')
@@ -314,6 +328,10 @@ class Bucardo(Plugin):
             self._add_table_sequence_metadata()
 
             print('Bucardo installed.')
+
+    def reload(self):
+        """Reload bucardo config."""
+        os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} reload_config')
 
     def restart(self):
         """Restart bucardo daemon."""
