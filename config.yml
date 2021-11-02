@@ -94,6 +94,30 @@ concurrency:
     # bucardo_dbname has to be unique when multiple jobs are running simultaneously.
     bucardo_dbname: mybucardo
 
+# This section allows the user to apply arbitrary changes to the Bucardo code
+# using sed.
+#
+# To make a change, create a fork section, and pass in the name of the file to
+# be modified, the pattern, and the replacement string. sed will apply
+# `s/pattern/replacement/` to the file.
+#
+# You can make multiple changes by having multiple forks. The name of each fork
+# is arbitrary.
+#
+# The filename must be an absolute path.
+#
+# TODO: Build in support for more features, like global replace.
+fork_bucardo:
+    change1:
+        file: /path/to/file
+        pattern: 'pattern1'
+        replacement: 'new string1'
+    change2:
+        file: /path/to/file
+        pattern: 'pattern2'
+        replacement: 'new string2'
+
+
 # This section configures the logic for temporarily dropping large indexes for
 # data copy.
 #
