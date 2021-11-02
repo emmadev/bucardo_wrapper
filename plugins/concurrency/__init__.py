@@ -66,7 +66,7 @@ class Concurrency(Plugin):
                     ],
                     check=True
                 )
-            except CalledProcessError:
+            except subprocess.CalledProcessError:
                 print(
                     f'Could not copy {filename} to `/usr/bin/bucardo` due to a permission error. '
                     'Make sure that has been done at least once on this host.'
