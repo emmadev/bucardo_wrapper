@@ -120,17 +120,18 @@ class Retry(Plugin):
                         print(notice, end='')
             finally:
                 conn.close()
+            if self.cfg['databases']['primary'].get('cascade'):
+                self.bucardo_instance._toggle_kick_triggers('enable always')
+            if self.cfg['databases']['primary'].get('disable_kicking'):
+                self.bucardo_instance._toggle_kick_triggers('disable')
         else:
             self.bucardo_instance.add_triggers()
-
-        if self.cfg['databases']['primary'].get('cascade'):
-            self.bucardo_instance._enable_cascade_triggers()
 
         self._set_timeout(self.primary_user, 'DEFAULT')
 
         print(
             'Attempted to add triggers. Check the output above for warnings about missing triggers. '
-            'If you see any, just run try_add again. If there are no warnings, you should be good to go.'
+            'If you see any, just run add_triggers again. If there are no warnings, you should be good to go.'
         )
 
     def drop_triggers(self):
