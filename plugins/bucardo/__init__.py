@@ -127,7 +127,7 @@ class Bucardo(Plugin):
             f'add herd {self.repl_name} {tables} {sequences}'
         )
 
-    def _autokick(self):
+    def _async_kick_start(self):
         """Automatically kick replication sync every second.
 
         This means the database doesn't have to kick synchronously every time there's a commit.
@@ -193,7 +193,7 @@ class Bucardo(Plugin):
         contention on that shared object.  This can cause a self-DDOS.
 
         If you disable automatic, synchronous kicking, you must run NOTIFY some other
-        way, or replication will fall behind. See the `_autokick` function for how this
+        way, or replication will fall behind. See the `_async_kick_start` function for how this
         plugin does it.
 
         Reasons for enabling always:
@@ -296,7 +296,7 @@ class Bucardo(Plugin):
         if self.cfg['databases']['primary'].get('cascade'):
             self._toggle_kick_triggers('enable always')
         # Need to disable one of the triggers if the user wants to reduce outage risk.
-        if self.cfg['databases']['primary'].get('disable_kicking'):
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
             self._toggle_kick_triggers('disable')
         print('Done adding triggers.')
 
@@ -388,16 +388,16 @@ class Bucardo(Plugin):
         """Restart bucardo daemon."""
         print('Restarting daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} restart')
-        if self.cfg['databases']['primary'].get('disable_kicking'):
-            self._autokick()
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_start()
         print('Daemon restarted.')
 
     def start(self):
         """Start bucardo daemon."""
         print('Starting daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} start')
-        if self.cfg['databases']['primary'].get('disable_kicking'):
-            self._autokick()
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_start()
         print('Daemon started.')
 
     def status(self):
