@@ -8,6 +8,7 @@ Bucardo: Basic bucardo replication functionality.
 """
 
 import os
+import signal
 import time
 from subprocess import Popen, DEVNULL
 
@@ -153,6 +154,27 @@ class Bucardo(Plugin):
         print(
             f'The bucardo sync is being kicked every second. See {self.autokick_pidfile}'
         )
+
+    def _async_kick_stop(self):
+        """Kill the process that kicks the replication sync every second.
+
+        See _async_kick_start for details.
+        """
+        try:
+            with open(self.autokick_pidfile) as pidfile:
+                for pid in pidfile:
+                    pid = int(pid)
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        print('Unable to kill asynchronous kick process. You must manage it manually.')
+                    else:
+                        os.remove(self.autokick_pidfile)
+        except FileNotFoundError:
+            print(
+                f'Expected {self.autokick_pidfile} not found. '
+                'If the asynchronous kick process is running, you must manage it manually.'
+            )
 
     def _configure_bucardo(self):
         """Tell bucardo where to log and write pidfiles.
@@ -417,6 +439,8 @@ class Bucardo(Plugin):
         """Stop bucardo daemon."""
         print('Stopping daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} stop')
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_stop()
         print('Daemon stopped.')
 
     def uninstall(self):
