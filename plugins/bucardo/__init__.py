@@ -89,6 +89,9 @@ class Bucardo(Plugin):
         self.bucardo_opts = f'--no-bucardorc --logextension {self.repl_name}'
         self.cfg = cfg
 
+        self.piddir = f'/var/run/bucardo/{self.repl_name}_piddir'
+        self.autokick_pidfile = f'{self.piddir}/autokick_sync.pid'
+
     def _add_table_sequence_metadata(self):
         """Update bucardo metadata with list of tables and sequences to replicate.
 
@@ -141,9 +144,14 @@ class Bucardo(Plugin):
             ],
             stdout=DEVNULL
         ).pid
+
+        # Manage the process using a pidfile.
+        pid = str(pid)
+        with open(self.autokick_pidfile, 'w') as pidfile:
+            pidfile.write(pid)
+
         print(
-            f'The bucardo sync is being kicked every second by process {pid}.'
-            ' Stopping it is up to you.'
+            f'The bucardo sync is being kicked every second. See {self.autokick_pidfile}'
         )
 
     def _configure_bucardo(self):
