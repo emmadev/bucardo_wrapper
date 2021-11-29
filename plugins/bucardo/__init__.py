@@ -417,6 +417,8 @@ class Bucardo(Plugin):
     def restart(self):
         """Restart bucardo daemon."""
         print('Restarting daemon.')
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_stop()
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} restart')
         if self.cfg['bucardo'].get('asynchronous_kicking'):
             self._async_kick_start()
