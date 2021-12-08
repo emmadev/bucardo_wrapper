@@ -178,10 +178,10 @@ class Bucardo(Plugin):
         )
 
         # Tell bucardo where to write pidfiles and stopfiles.
-        os.system(f'mkdir -p /var/run/bucardo/{self.repl_name}_piddir')
+        os.system(f'mkdir -p {self.piddir}')
         os.system(
             f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'set piddir="/var/run/bucardo/{self.repl_name}_piddir"'
+            f'set piddir="{self.piddir}"'
         )
         os.system(
             f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
