@@ -8,6 +8,7 @@ Bucardo: Basic bucardo replication functionality.
 """
 
 import os
+import signal
 import time
 from subprocess import Popen, DEVNULL
 
@@ -89,6 +90,9 @@ class Bucardo(Plugin):
         self.bucardo_opts = f'--no-bucardorc --logextension {self.repl_name}'
         self.cfg = cfg
 
+        self.piddir = f'/var/run/bucardo/{self.repl_name}_piddir'
+        self.autokick_pidfile = f'{self.piddir}/autokick_sync.pid'
+
     def _add_table_sequence_metadata(self):
         """Update bucardo metadata with list of tables and sequences to replicate.
 
@@ -127,7 +131,7 @@ class Bucardo(Plugin):
             f'add herd {self.repl_name} {tables} {sequences}'
         )
 
-    def _autokick(self):
+    def _async_kick_start(self):
         """Automatically kick replication sync every second.
 
         This means the database doesn't have to kick synchronously every time there's a commit.
@@ -141,10 +145,36 @@ class Bucardo(Plugin):
             ],
             stdout=DEVNULL
         ).pid
+
+        # Manage the process using a pidfile.
+        pid = str(pid)
+        with open(self.autokick_pidfile, 'w') as pidfile:
+            pidfile.write(pid)
+
         print(
-            f'The bucardo sync is being kicked every second by process {pid}.'
-            ' Stopping it is up to you.'
+            f'The bucardo sync is being kicked every second. See {self.autokick_pidfile}'
         )
+
+    def _async_kick_stop(self):
+        """Kill the process that kicks the replication sync every second.
+
+        See _async_kick_start for details.
+        """
+        try:
+            with open(self.autokick_pidfile) as pidfile:
+                for pid in pidfile:
+                    pid = int(pid)
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        print('Unable to kill asynchronous kick process. You must manage it manually.')
+                    else:
+                        os.remove(self.autokick_pidfile)
+        except FileNotFoundError:
+            print(
+                f'Expected {self.autokick_pidfile} not found. '
+                'If the asynchronous kick process is running, you must manage it manually.'
+            )
 
     def _configure_bucardo(self):
         """Tell bucardo where to log and write pidfiles.
@@ -170,10 +200,10 @@ class Bucardo(Plugin):
         )
 
         # Tell bucardo where to write pidfiles and stopfiles.
-        os.system(f'mkdir -p /var/run/bucardo/{self.repl_name}_piddir')
+        os.system(f'mkdir -p {self.piddir}')
         os.system(
             f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'set piddir="/var/run/bucardo/{self.repl_name}_piddir"'
+            f'set piddir="{self.piddir}"'
         )
         os.system(
             f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
@@ -193,7 +223,7 @@ class Bucardo(Plugin):
         contention on that shared object.  This can cause a self-DDOS.
 
         If you disable automatic, synchronous kicking, you must run NOTIFY some other
-        way, or replication will fall behind. See the `_autokick` function for how this
+        way, or replication will fall behind. See the `_async_kick_start` function for how this
         plugin does it.
 
         Reasons for enabling always:
@@ -296,7 +326,7 @@ class Bucardo(Plugin):
         if self.cfg['databases']['primary'].get('cascade'):
             self._toggle_kick_triggers('enable always')
         # Need to disable one of the triggers if the user wants to reduce outage risk.
-        if self.cfg['databases']['primary'].get('disable_kicking'):
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
             self._toggle_kick_triggers('disable')
         print('Done adding triggers.')
 
@@ -387,17 +417,19 @@ class Bucardo(Plugin):
     def restart(self):
         """Restart bucardo daemon."""
         print('Restarting daemon.')
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_stop()
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} restart')
-        if self.cfg['databases']['primary'].get('disable_kicking'):
-            self._autokick()
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_start()
         print('Daemon restarted.')
 
     def start(self):
         """Start bucardo daemon."""
         print('Starting daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} start')
-        if self.cfg['databases']['primary'].get('disable_kicking'):
-            self._autokick()
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_start()
         print('Daemon started.')
 
     def status(self):
@@ -409,6 +441,8 @@ class Bucardo(Plugin):
         """Stop bucardo daemon."""
         print('Stopping daemon.')
         os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} stop')
+        if self.cfg['bucardo'].get('asynchronous_kicking'):
+            self._async_kick_stop()
         print('Daemon stopped.')
 
     def uninstall(self):

@@ -58,8 +58,12 @@ databases:
 
 # This section configures basic bucardo replication functionality.
 #
-# These parameters are accepted: copy_data, replication_name, replication_objects
+# These parameters are accepted: asynchronous_kicking, copy_data, replication_name, replication_objects
 bucardo:
+    # Set asynchronous_kicking to true if you want the secondary to be notified
+    # about new data every second, instead of every time a commit comes in.
+    asynchronous_kicking: True
+
     # Whether to do an initial data copy from primary to secondary.
     # Possible values are 'always', 'never', and 'empty'.
     copy_data: empty
