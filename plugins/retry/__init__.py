@@ -120,10 +120,10 @@ class Retry(Plugin):
                         print(notice, end='')
             finally:
                 conn.close()
-            if self.cfg['databases']['primary'].get('cascade'):
-                self.bucardo_instance._toggle_kick_triggers('enable always')
-            if self.cfg['databases']['primary'].get('disable_kicking'):
-                self.bucardo_instance._toggle_kick_triggers('disable')
+
+            # Enable and disable triggers as needed.
+            self.bucardo_instance._manage_triggers()
+
         else:
             self.bucardo_instance.add_triggers()
 
