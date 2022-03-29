@@ -278,7 +278,7 @@ type: "AccessExclusiveLock on object 0 of class 1262 of database 0". There is,
 as far as I can tell, only one such object. So too much concurrent activity all
 trying to get that same lock can cause a bottleneck.
 
-To avoid that, you can set `disable_kicking` in the `bucardo:primary` section
+To avoid that, you can set `asynchronous_kicking` in the `bucardo` section
 of the config. What that will do is disable the kick trigger during the
 `add_triggers` action, and spawn a background process during `start` and
 `restart` to do the kicking instead. Kicking will be done once per second,
@@ -287,11 +287,8 @@ throughout the day, or if you don't mind bucardo checking for changes and not
 always finding them. (There is a small performance overhead to any needless
 activity.)
 
-The pid will be printed when `start` or `restart` is run. This pid isn't stored
-by the script and isn't managed by it. A new process is spawned each time you
-run `restart`. It's up to you to kill it.
-
-TODO: Write the pid to a pidfile and manage the process.
+The process that does the asynchronous kicking will be killed and restarted as
+needed by the `bucardo.start`, `bucardo.stop`, and `bucardo.restart` commands.
 
 # Logs and pidfiles
 

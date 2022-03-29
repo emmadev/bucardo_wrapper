@@ -210,8 +210,34 @@ class Bucardo(Plugin):
             f'set stopfile="{self.repl_name}_stopfile"'
         )
 
-    def _toggle_kick_triggers(self, enable_or_disable):
-        """Enable or disable the kick triggers.
+    def _manage_triggers(self):
+        """Determine which triggers need to be enabled or disabled, based on the config.
+
+        See _toggle_triggers() for more details on the logic.
+        """
+
+        async_kick = self.cfg['bucardo'].get('asynchronous_kicking')
+        cascade = self.cfg['databases']['primary'].get('cascade')
+
+        # Always disable kicking if configured to do so. This can prevent outages.
+        if async_kick:
+            self._toggle_triggers('disable', f'bucardo_kick_{self.repl_name}')
+
+        # Always enable truncate triggers if needed to propagate truncates downstream.
+        # This prevents data loss.
+        if cascade:
+            self._toggle_triggers('enable always', f'bucardo_note_trunc_{self.repl_name}')
+
+            # If we need to propagate changes downstream (cascade),
+            # and we don't have another method of propagation (async kicking),
+            # enable the kick trigger to always fire on database B in an A->B->C replication topology.
+            if not async_kick:
+                self._toggle_triggers('enable always', f'bucardo_kick_{self.repl_name}')
+
+    def _toggle_triggers(self, enable_or_disable, trigger):
+        """Enable or disable triggers.
+
+        KICK:
 
         The kick triggers are the ones that publish a NOTIFY event indicating
         that new data has just come in and is available to be replicated.
@@ -234,6 +260,16 @@ class Bucardo(Plugin):
         A -> B treat B as a replica, which means all triggers are disabled.  We get
         around this by enabling the kick bucardo trigger to fire 'always', which means
         regardless of whether the database is an origin or a replica, on database B.
+
+        TRUNC:
+
+        The truncate triggers are the ones that propagate a TRUNCATE issued on the primary.
+
+        Reasons for enabling always:
+
+        If a truncate is issued on the primary in an A->B->C cascading replication topology,
+        the truncate trigger on database B must be enabled always in order for the truncate
+        to be propagated downstream to C.
         """
 
         if enable_or_disable == 'disable':
@@ -253,7 +289,6 @@ class Bucardo(Plugin):
         # The bucardo trigger that will kick off a notification when
         # changes come in to the primary database
         # (which is B in an A -> B-> C topology).
-        trigger = f'bucardo_kick_{self.repl_name}'
         trigger_needs_toggling = False
         conn = psycopg2.connect(self.primary_schema_owner_conn_pg_format)
         # Update the trigger on each table.
@@ -277,7 +312,7 @@ class Bucardo(Plugin):
                 raise
 
             if trigger_needs_toggling:
-                enabled = "DISABLE TRIGGER" if enable_or_disable == 'disable' else "ENABLE ALWAYS TRIGGER"
+                enabled = 'DISABLE TRIGGER' if enable_or_disable == 'disable' else 'ENABLE ALWAYS TRIGGER'
                 query = sql.SQL('ALTER TABLE {schema}.{table} {enabled} {trigger}').format(
                     schema=sql.Identifier(table[0]),
                     table=sql.Identifier(table[1]),
@@ -297,7 +332,7 @@ class Bucardo(Plugin):
                     conn.close()
                     raise
         conn.close()
-        print('Kick triggers disabled.')
+        print('Triggers toggled.')
 
     def add_triggers(self):
         """Add triggers to tables on primary database."""
@@ -321,13 +356,9 @@ class Bucardo(Plugin):
             f'add sync {self.repl_name} relgroup={self.repl_name} '
             f'dbs=primary_db:source,secondary_db:target onetimecopy={one_time_copy}'
         )
-        # Need to tweak one of the triggers if we want to replicate changes
-        # that have come in from an upstream primary.
-        if self.cfg['databases']['primary'].get('cascade'):
-            self._toggle_kick_triggers('enable always')
-        # Need to disable one of the triggers if the user wants to reduce outage risk.
-        if self.cfg['bucardo'].get('asynchronous_kicking'):
-            self._toggle_kick_triggers('disable')
+
+        self._manage_triggers()
+
         print('Done adding triggers.')
 
     def change_config(self):
