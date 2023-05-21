@@ -515,6 +515,30 @@ EOF"""
 
         print("Uninstalled bucardo.")
 
+    def wait_for_copy(self):
+        """Wait for the initial data copy of bucardo to complete.
+
+        This method polls the database every 5 seconds checking on the status of the copy.
+        """
+        print("Checking to see if the data copy is complete.", end="", flush=True)
+        if self.cfg["bucardo"]["copy_data"] in ["always", "empty"]:
+            while True:
+                conn = psycopg2.connect(self.bucardo_conn_pg_format)
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT onetimecopy FROM bucardo.sync")
+                        onetimecopy_status = cur.fetchone()
+                finally:
+                    conn.close()
+                if onetimecopy_status[0] == 0:
+                    break
+                else:
+                    print(".", end="", flush=True)
+                    time.sleep(5)
+        else:
+            print("\nNot configured to do a data copy.")
+        return True
+
     def _validate_install(self):
         print("Check: bucardo database connection info stored...", end="")
         conn = psycopg2.connect(self.bucardo_conn_pg_format)

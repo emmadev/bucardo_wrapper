@@ -11,7 +11,6 @@ Classes exported:
 Indexes: Identify large indexes, drop them on the secondary db, and recreate them.
 """
 import re
-import time
 
 import psycopg2
 import quantities as pq
@@ -265,29 +264,6 @@ class Indexes(Plugin):
                 raise
         conn.close()
 
-    def _wait_on_data_copy(self):
-        """Grep the bucardo log to see how many syncs have finished, then wait for that number to increase."""
-        print("Waiting on initial data copy.", end="", flush=True)
-
-        initial_num_syncs = 0
-        current_num_syncs = 0
-        with open(f"/var/log/bucardo/log.bucardo.{self.repl_name}", "r") as file:
-            for line in file.readlines():
-                if "Total target rows copied:" in line:
-                    initial_num_syncs += 1
-
-        while current_num_syncs <= initial_num_syncs:
-            current_num_syncs = 0
-            with open(f"/var/log/bucardo/log.bucardo.{self.repl_name}", "r") as file:
-                for line in file.readlines():
-                    if "Total target rows copied:" in line:
-                        current_num_syncs += 1
-
-            time.sleep(60)
-            print(".", end="", flush=True)
-
-        print("\nData copy finished.")
-
     def drop(self):
         """Drop large indexes on the secondary database.
 
@@ -368,27 +344,12 @@ class Indexes(Plugin):
         """Recreate dropped indexes on the secondary database.
 
         If the bulk copy isn't complete and it's being loaded via bucardo, the
-        user can opt to wait until it's finished.  The process for detecting a copy is
-        rather dumb: it will grep for a string in the log, count the number of
-        occurrences, and wait for that number to increase.  This means the method is
-        vulnerable to race conditions when the bulk copy finishes in the time between
-        when the user selects to wait and when the grep on the log is executed.  Only
-        use this option if you're sure you have a long-running copy.
-
-        If the user doesn't opt to wait, the indexes will be recreated immediately.
+        user should run bucardo.wait_for_copy first.
 
         The definitions for the indexes to be recreated are fetched from the
         `manage_indexes` schema on the bucardo database.
         """
-        user_cmd = input(
-            "Do you want to wait until the initial data copy has finished? "
-            "If no, the indexes will be recreated immediately. [y/n]: "
-        )
-        print()
-        if user_cmd == "y":
-            self._wait_on_data_copy()
         self._execute_ddl("recreate")
-        print()
 
     def _validate_install(self):
         print("Check: The manage_indexes.indexes_definitions table is present...", end="")
