@@ -389,3 +389,103 @@ class Indexes(Plugin):
             self._wait_on_data_copy()
         self._execute_ddl("recreate")
         print()
+
+    def _validate_install(self):
+        print("Check: The manage_indexes.indexes_definitions table is present...", end="")
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM manage_indexes.index_definitions")
+                conn.commit()
+        except Exception:
+            print("Fail.")
+            print("ERROR: Unable to find the manage_indexes.index_definitions table in the bucardo metadata database.")
+            raise Exception()
+        else:
+            print("Pass.")
+        finally:
+            conn.close()
+
+    def _validate_drop(self):
+        print("Check: Looking for indexes to drop...", end="")
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM manage_indexes.index_definitions LIMIT 1")
+                indexes = cur.fetchone()
+        except Exception:
+            print("Fail.")
+            print("ERROR: Unable to query the manage_indexes.index_definitions table in the bucardo metadata database.")
+            raise Exception()
+        finally:
+            conn.close()
+
+        if cur.rowcount:
+            # We found indexes to drop.
+            print("Pass")
+            print("Check: Spot checking an index to see if it was dropped...", end="")
+            conn = psycopg2.connect(self.secondary_schema_owner_conn_pg_format)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT * FROM pg_indexes WHERE schemaname = %s AND tablename = %s AND indexname = %s",
+                        [indexes[0], indexes[2], indexes[1]],
+                    )
+                    rowcount = cur.rowcount
+            except Exception as e:
+                print("Fail")
+                print(f"ERROR: {e})")
+                raise Exception()
+            finally:
+                conn.close()
+            if rowcount:
+                print("Fail.")
+                print(f"ERROR: unexpected index {indexes[1]} found on {indexes[0]}.{indexes[2]}.")
+                raise Exception()
+            else:
+                print("Pass.")
+        else:
+            print("None.")
+            print("No indexes found to drop. Treating this as a pass.")
+
+    def _validate_recreate(self):
+        print("Check: Looking for indexes to recreate...", end="")
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM manage_indexes.index_definitions LIMIT 1")
+                indexes = cur.fetchone()
+        except Exception:
+            print("Fail.")
+            print("ERROR: Unable to query the manage_indexes.index_definitions table in the bucardo metadata database.")
+            raise Exception()
+        finally:
+            conn.close()
+
+        if cur.rowcount:
+            # We found indexes to drop.
+            print("Pass")
+            print("Check: Spot checking an index to see if it was recreated...", end="")
+            conn = psycopg2.connect(self.secondary_schema_owner_conn_pg_format)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT * FROM pg_indexes WHERE schemaname = %s AND tablename = %s AND indexname = %s",
+                        [indexes[0], indexes[2], indexes[1]],
+                    )
+                    rowcount = cur.rowcount
+            except Exception as e:
+                print("Fail")
+                print(f"ERROR: {e})")
+                raise Exception()
+            finally:
+                conn.close()
+            if rowcount:
+                print("Pass.")
+            else:
+                print("Fail.")
+                print(f"ERROR: index {indexes[1]} missing from {indexes[0]}.{indexes[2]}.")
+                raise Exception()
+        else:
+            print("None.")
+            print("No indexes found to recreate. Treating this as a pass.")

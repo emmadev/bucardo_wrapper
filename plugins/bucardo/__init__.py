@@ -402,13 +402,19 @@ class Bucardo(Plugin):
         """Install bucardo metadata."""
         print("Installing bucardo.")
 
+        # The EOF sends input that the user would otherwise be prompted for.
+        # All it's doing is telling the install to proceed with the default values.
         return_code = os.WEXITSTATUS(
-            os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} install")
+            os.system(
+                f"""bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} install << EOF
+P
+P
+EOF"""
+            )
         )
 
         if return_code:
-            print("Bucardo not installed.")
-            return
+            raise Exception("Unable to install bucardo.")
         else:
             print("Configuring logging.")
             self._configure_bucardo()
@@ -508,3 +514,159 @@ class Bucardo(Plugin):
             time.sleep(3)
 
         print("Uninstalled bucardo.")
+
+    def _validate_install(self):
+        print("Check: bucardo database connection info stored...", end="")
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM bucardo.db")
+                dbrows = cur.fetchone()
+        finally:
+            conn.close()
+        if dbrows[0] >= 2:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Expecting at least two database entries in the bucardo.db table.")
+            raise Exception()
+
+        print("Check: replication objects exist...", end="")
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM bucardo.goat")
+                dbrows = cur.fetchone()
+        finally:
+            conn.close()
+        if dbrows[0] >= 1:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: No objects to replicate were successfully recorded in the bucardo.goat table.")
+            raise Exception()
+
+    def _validate_uninstall(self):
+        print("Check: bucardo metadata database dropped...", end="")
+        conn = psycopg2.connect(self.bucardo_fallback_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                query = sql.SQL("SELECT COUNT(*) FROM pg_catalog.pg_database WHERE datname = %s")
+                cur.execute(query, [self.bucardo["dbname"]])
+                rowcount = cur.fetchone()
+        finally:
+            conn.close()
+        if not rowcount[0]:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Bucardo metadata database still exists.")
+            raise Exception()
+
+        print("Check: bucardo schema dropped in primary database...", end="")
+        conn = psycopg2.connect(self.primary_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM pg_catalog.pg_namespace WHERE nspname = 'bucardo'")
+                rowcount = cur.fetchone()
+        finally:
+            conn.close()
+        if not rowcount[0]:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: bucardo schema still present on primary database.")
+            raise Exception()
+
+    def _validate_start(self):
+        print("Check: bucardo pidfile contains a pid...", end="")
+        try:
+            with open(f"/var/run/bucardo/{self.repl_name}_piddir/bucardo.mcp.pid", "r") as file:
+                pid = file.readline().rstrip()
+        except FileNotFoundError:
+            print("Fail.")
+            print(f"ERROR: The bucardo pid file is missing from /var/run/bucardo/{self.repl_name}_piddir.")
+            raise Exception()
+        else:
+            print("Pass.")
+
+        print("Check: pid points to a running bucardo process...", end="")
+        try:
+            with open(f"/proc/{pid}/cmdline") as file:
+                if file.read().find("Bucardo") != -1:
+                    print("Pass.")
+                else:
+                    print("Fail.")
+                    print(f"ERROR: The pid {pid} in the bucardo pid file is for a process that isn't Bucardo.")
+                    raise Exception()
+        except FileNotFoundError:
+            print("Fail.")
+            print(f"ERROR: The bucardo pid file points to a process {pid} that isn't running.")
+            raise Exception()
+
+    def _validate_restart(self):
+        self._validate_start()
+
+    def _validate_stop(self):
+        print("Check: bucardo pidfile does not exist...", end="")
+        # Not ideal, but bucardo.stop runs async and can take a second or two to finish.
+        time.sleep(5)
+        try:
+            with open(f"/var/run/bucardo/{self.repl_name}_piddir/bucardo.mcp.pid", "r") as file:
+                pid = file.readline().rstrip()
+        except FileNotFoundError:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print(f"ERROR: There is a bucardo pid file in /var/run/bucardo/{self.repl_name}_piddir with pid {pid}.")
+            raise Exception()
+
+    def _validate_trigger_count(self, expected_count):
+        # Check that the triggers are at least present/absent on the tables.
+        # Checking enabled/disabled status would basically just duplicate the logic and risk introducting new bugs.
+        print(f"Check: all tables have {expected_count} bucardo triggers...", end="")
+
+        # Get the list of tables.
+        # 'r' is for relation in pg_class.relkind.
+        tables = self._find_objects("r", self.cfg["bucardo"]["replication_objects"])
+
+        # Check that there are the right number of triggers beginning with 'bucardo' on each expected table.
+        query = sql.SQL(
+            """SELECT pn.nspname || '.' || pc.relname
+               FROM pg_class pc
+                   JOIN pg_namespace pn ON pn.OID = pc.relnamespace
+                   LEFT JOIN pg_trigger pt ON pt.tgrelid = pc.OID AND tgname LIKE 'bucardo%'
+               WHERE pn.nspname || '.' || pc.relname IN ({table_names})
+               GROUP BY pn.nspname || '.' || pc.relname
+               HAVING COUNT(pt.OID) <> {variable}
+            """
+        ).format(
+            table_names=sql.SQL(",").join(map(sql.Literal, (".".join(i) for i in tables))),
+            variable=sql.Literal(expected_count),
+        )
+        conn = psycopg2.connect(self.primary_schema_owner_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                unexpected_triggers = ", ".join(t[0] for t in cur.fetchall())
+                if cur.rowcount:
+                    # There are tables with the wrong number of bucardo triggers.
+                    print("Fail.")
+                    print(f"ERROR: Unexpected number of triggers on {unexpected_triggers}.")
+                    raise Exception()
+                else:
+                    # All tables have the expected number of bucardo triggers.
+                    print("Pass.")
+        except Exception as e:
+            # If we can't validate, abort.
+            raise Exception(e)
+        finally:
+            conn.close()
+
+    def _validate_drop_triggers(self):
+        # Check that there are 0 bucardo triggers on each table.
+        self._validate_trigger_count(0)
+
+    def _validate_add_triggers(self):
+        # Check that there are 3 bucardo triggers on each table.
+        self._validate_trigger_count(3)

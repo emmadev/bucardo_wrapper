@@ -61,6 +61,9 @@ def define_commands(plugins_added):
             # Add the summary line of the method's docstring, for display in the menu.
             summary_docstring = available_cmds[fully_qualified_cmd]["func"].__doc__.split("\n")[0]
             available_cmds[fully_qualified_cmd]["doc"] = summary_docstring
+            available_cmds[fully_qualified_cmd]["valid"] = getattr(
+                plugins_added[plugin_name]["instance"], f"_validate_{cmd}", lambda: None
+            )
 
         available_cmds["exit"] = {}
 
@@ -90,6 +93,16 @@ parser.add_argument(
     default="config.yml",
 )
 
+parser.add_argument(
+    "-i", "--interactive", help="Enter interactive mode for issuing bucardo commands", action="store_true"
+)
+
+parser.add_argument(
+    "-l",
+    "--list_commands",
+    help='Space-separated list of commands, e.g. "bucardo.install bucardo.add_triggers"',
+)
+
 args = parser.parse_args()
 
 cfg = config.load_config(args.config_file)
@@ -114,36 +127,59 @@ plugins_added = {}
 # from the plugins dynamically, without executing random user input.
 available_cmds = {}
 
-if list_plugins:
-    for plugin_name in list_plugins:
-        plugins_added = import_plugin_modules(plugin_name)
-        available_cmds = define_commands(plugins_added)
+if not list_plugins:
+    print("No plugins found.")
+    exit()
 
+for plugin_name in list_plugins:
+    plugins_added = import_plugin_modules(plugin_name)
+    available_cmds = define_commands(plugins_added)
+
+
+def execute(user_cmd):
+    if user_cmd == "exit":
+        print("Exiting.")
+        exit()
+    elif user_cmd in available_cmds:
+        print(f"Executing \033[1m{user_cmd}\033[0m")
+        try:
+            available_cmds[user_cmd]["func"]()
+        except KeyboardInterrupt:
+            # Return the user to the prompt.
+            print("Exiting")
+            pass
+    else:
+        print("Not a recognized command.")
+
+
+def validate(user_cmd):
+    try:
+        print(f"\nValidating \033[1m{user_cmd}\033[0m")
+        available_cmds[user_cmd]["valid"]()
+    except Exception as e:
+        print(e)
+        print(f"{user_cmd} step failed. Aborting.")
+        raise Exception()
+    else:
+        print(f"{user_cmd} step passed checks. Continuing.\n\n")
+
+
+if args.interactive:
+    # Let the user supply commands interactively from a menu.
     menu = construct_menu(plugins_added, available_cmds)
 
     # Display the menu, prompt the user to enter a command, execute the command, and reprompt the user.
-    try:
-        while True:
-            print(menu)
-
-            # input() with readline imported above, allows the user the scroll through their
-            # history using the up and down arrows.
-            user_cmd = input('\nEnter the command you wish to run here, or type "exit": ')
-            print()
-            if user_cmd == "exit":
-                print("Exiting.")
-                exit()
-            elif user_cmd in available_cmds:
-                try:
-                    available_cmds[user_cmd]["func"]()
-                except KeyboardInterrupt:
-                    # Return the user to the prompt.
-                    pass
-
-            else:
-                print("Not a recognized command.")
-            print()
-    except KeyboardInterrupt:
-        print("Exiting")
+    while True:
+        print(menu)
+        # input() with readline imported above, allows the user the scroll through their
+        # history using the up and down arrows.
+        user_cmd = input('\nEnter the command you wish to run here, or type "exit": ')
+        print()
+        execute(user_cmd)
+        validate(user_cmd)
+        print()
 else:
-    print("No plugins found.")
+    # Use the commands passed in using the --list_commands flag.
+    for user_cmd in args.list_commands.split():
+        execute(user_cmd)
+        validate(user_cmd)
