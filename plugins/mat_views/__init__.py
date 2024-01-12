@@ -7,9 +7,8 @@ Classes exported:
 MatViews: Identify materialized views and refresh them on the secondary database.
 """
 import psycopg2
-from psycopg2 import sql
-
 from plugins import Plugin
+from psycopg2 import sql
 
 
 class MatViews(Plugin):
@@ -36,7 +35,7 @@ class MatViews(Plugin):
         super(MatViews, self).__init__(cfg)
 
         # Override or inherit certain params from the parent, depending on the config.
-        self._set_inheritable_params('mat_views')
+        self._set_inheritable_params("mat_views")
 
     def refresh(self):
         """Refresh materialized views.
@@ -48,17 +47,16 @@ class MatViews(Plugin):
 
         Then it refreshes the materialized views.
         """
-        print('Finding materialized views.')
+        print("Finding materialized views.")
         # 'm' is for "materialized view".
-        views = self._find_objects('m', self.repl_objects)
+        views = self._find_objects("m", self.repl_objects)
 
         if views:
             conn = psycopg2.connect(self.secondary_schema_owner_conn_pg_format)
             for view in views:
-                print(f'Refreshing {view[0]}.{view[1]}')
-                query = sql.SQL('REFRESH MATERIALIZED VIEW {schema}.{table}').format(
-                    schema=sql.Identifier(view[0]),
-                    table=sql.Identifier(view[1])
+                print(f"Refreshing {view[0]}.{view[1]}")
+                query = sql.SQL("REFRESH MATERIALIZED VIEW {schema}.{table}").format(
+                    schema=sql.Identifier(view[0]), table=sql.Identifier(view[1])
                 )
                 try:
                     with conn.cursor() as cur:
@@ -68,6 +66,6 @@ class MatViews(Plugin):
                     conn.close()
                     raise
             conn.close()
-            print('Done refreshing views.')
+            print("Done refreshing views.")
         else:
-            print('No materialized views found.')
+            print("No materialized views found.")

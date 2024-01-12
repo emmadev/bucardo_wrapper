@@ -10,12 +10,11 @@ Bucardo: Basic bucardo replication functionality.
 import os
 import signal
 import time
-from subprocess import Popen, DEVNULL
+from subprocess import DEVNULL, Popen
 
 import psycopg2
-from psycopg2 import sql
-
 from plugins import Plugin
+from psycopg2 import sql
 
 
 class Bucardo(Plugin):
@@ -69,29 +68,29 @@ class Bucardo(Plugin):
         self.bucardo_conn_bucardo_format = self._connect(
             self.bucardo,
             include_dashes=True,
-            prefix='db',
-            user=self.bucardo['database_owner'],
+            prefix="db",
+            user=self.bucardo["database_owner"],
         )
 
         # Bucardo stores primary and secondary connection info in yet a third, slightly different format.
         self.primary_conn_bucardo_format = self._connect(
             self.primary,
-            prefix='db',
-            user=self.primary['database_owner'],
+            prefix="db",
+            user=self.primary["database_owner"],
         )
 
         self.secondary_conn_bucardo_format = self._connect(
             self.secondary,
-            prefix='db',
-            user=self.secondary['database_owner'],
+            prefix="db",
+            user=self.secondary["database_owner"],
         )
 
-        self.repl_name = cfg['bucardo']['replication_name']
-        self.bucardo_opts = f'--no-bucardorc --logextension {self.repl_name}'
+        self.repl_name = cfg["bucardo"]["replication_name"]
+        self.bucardo_opts = f"--no-bucardorc --logextension {self.repl_name}"
         self.cfg = cfg
 
-        self.piddir = f'/var/run/bucardo/{self.repl_name}_piddir'
-        self.autokick_pidfile = f'{self.piddir}/autokick_sync.pid'
+        self.piddir = f"/var/run/bucardo/{self.repl_name}_piddir"
+        self.autokick_pidfile = f"{self.piddir}/autokick_sync.pid"
 
     def _add_table_sequence_metadata(self):
         """Update bucardo metadata with list of tables and sequences to replicate.
@@ -103,32 +102,34 @@ class Bucardo(Plugin):
         commad line tool connects to the bucardo database and populates the tables
         there with metadata about these tables and sequences.
         """
-        print('Finding tables and sequences')
+        print("Finding tables and sequences")
         # 'r' is for relation in pg_class.relkind.
-        schema_tables = self._find_objects('r', self.cfg['bucardo']['replication_objects'])
+        schema_tables = self._find_objects("r", self.cfg["bucardo"]["replication_objects"])
+        # 'p' is for partition in pg_class.relkind.
+        schema_tables = schema_tables + self._find_objects("p", self.cfg["bucardo"]["replication_objects"])
+
         # 'S' is for sequence in pg_class.relkind.
-        schema_sequences = self._find_objects('S', self.cfg['bucardo']['replication_objects'])
+        schema_sequences = self._find_objects("S", self.cfg["bucardo"]["replication_objects"])
 
         # Reformat [(schema1, table1), (schema2, table2)] (psycopg2 output)
         # into 'schema1.table1 schema2.table2' (bucardo input).
-        table_names = ['%s.%s' % name for name in schema_tables]
-        sequence_names = ['%s.%s' % name for name in schema_sequences]
+        table_names = ["%s.%s" % name for name in schema_tables]
+        sequence_names = ["%s.%s" % name for name in schema_sequences]
 
-        tables = ' '.join(table_names)
-        sequences = ' '.join(sequence_names)
+        tables = " ".join(table_names)
+        sequences = " ".join(sequence_names)
 
-        print('Storing metadata.')
+        print("Storing metadata.")
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'add tables {tables} db=primary_db'
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} " f"add tables {tables} db=primary_db"
         )
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'add sequences {sequences} db=primary_db'
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
+            f"add sequences {sequences} db=primary_db"
         )
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'add herd {self.repl_name} {tables} {sequences}'
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
+            f"add herd {self.repl_name} {tables} {sequences}"
         )
 
     def _async_kick_start(self):
@@ -140,20 +141,20 @@ class Bucardo(Plugin):
         # Run 'kick' in the background forever.
         pid = Popen(
             [
-                'watch', '-n 1',
-                'bucardo', f'{self.bucardo_opts} {self.bucardo_conn_bucardo_format} kick {self.repl_name}'
+                "watch",
+                "-n 1",
+                "bucardo",
+                f"{self.bucardo_opts} {self.bucardo_conn_bucardo_format} kick {self.repl_name}",
             ],
-            stdout=DEVNULL
+            stdout=DEVNULL,
         ).pid
 
         # Manage the process using a pidfile.
         pid = str(pid)
-        with open(self.autokick_pidfile, 'w') as pidfile:
+        with open(self.autokick_pidfile, "w") as pidfile:
             pidfile.write(pid)
 
-        print(
-            f'The bucardo sync is being kicked every second. See {self.autokick_pidfile}'
-        )
+        print(f"The bucardo sync is being kicked every second. See {self.autokick_pidfile}")
 
     def _async_kick_stop(self):
         """Kill the process that kicks the replication sync every second.
@@ -167,13 +168,13 @@ class Bucardo(Plugin):
                     try:
                         os.kill(pid, signal.SIGKILL)
                     except OSError:
-                        print('Unable to kill asynchronous kick process. You must manage it manually.')
+                        print("Unable to kill asynchronous kick process. You must manage it manually.")
                     else:
                         os.remove(self.autokick_pidfile)
         except FileNotFoundError:
             print(
-                f'Expected {self.autokick_pidfile} not found. '
-                'If the asynchronous kick process is running, you must manage it manually.'
+                f"Expected {self.autokick_pidfile} not found. "
+                "If the asynchronous kick process is running, you must manage it manually."
             )
 
     def _configure_bucardo(self):
@@ -184,29 +185,25 @@ class Bucardo(Plugin):
         where to log and write pidfiles.  We use the `repl_name` variable in the file
         names so that the user can run multiple daemons on the same server.
         """
-        # Tell bucardo where to log.
-        logdir = '/var/log/bucardo/'
+        # Tell bucardo where to log and how much to log.
+        logdir = "/var/log/bucardo/"
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
             f'set reason_file="{logdir}{self.repl_name}_reason_file"'
         )
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
             f'set log_conflict_file="{logdir}{self.repl_name}_log_conflict_file"'
         )
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
             f'set warning_file="{logdir}{self.repl_name}_warning_file"'
         )
-
         # Tell bucardo where to write pidfiles and stopfiles.
-        os.system(f'mkdir -p {self.piddir}')
+        os.system(f"mkdir -p {self.piddir}")
+        os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} " f'set piddir="{self.piddir}"')
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'set piddir="{self.piddir}"'
-        )
-        os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
             f'set stopfile="{self.repl_name}_stopfile"'
         )
 
@@ -216,23 +213,23 @@ class Bucardo(Plugin):
         See _toggle_triggers() for more details on the logic.
         """
 
-        async_kick = self.cfg['bucardo'].get('asynchronous_kicking')
-        cascade = self.cfg['databases']['primary'].get('cascade')
+        async_kick = self.cfg["bucardo"].get("asynchronous_kicking")
+        cascade = self.cfg["databases"]["primary"].get("cascade")
 
         # Always disable kicking if configured to do so. This can prevent outages.
         if async_kick:
-            self._toggle_triggers('disable', f'bucardo_kick_{self.repl_name}')
+            self._toggle_triggers("disable", f"bucardo_kick_{self.repl_name}")
 
         # Always enable truncate triggers if needed to propagate truncates downstream.
         # This prevents data loss.
         if cascade:
-            self._toggle_triggers('enable always', f'bucardo_note_trunc_{self.repl_name}')
+            self._toggle_triggers("enable always", f"bucardo_note_trunc_{self.repl_name}")
 
             # If we need to propagate changes downstream (cascade),
             # and we don't have another method of propagation (async kicking),
             # enable the kick trigger to always fire on database B in an A->B->C replication topology.
             if not async_kick:
-                self._toggle_triggers('enable always', f'bucardo_kick_{self.repl_name}')
+                self._toggle_triggers("enable always", f"bucardo_kick_{self.repl_name}")
 
     def _toggle_triggers(self, enable_or_disable, trigger):
         """Enable or disable triggers.
@@ -272,19 +269,18 @@ class Bucardo(Plugin):
         to be propagated downstream to C.
         """
 
-        if enable_or_disable == 'disable':
-            tgenabled = 'D'
-        elif enable_or_disable == 'enable always':
-            tgenabled = 'A'
+        if enable_or_disable == "disable":
+            tgenabled = "D"
+        elif enable_or_disable == "enable always":
+            tgenabled = "A"
         else:
             raise ValueError(
-                f'Invalid enable_or_disable value {enable_or_disable}. '
-                'Accepted values: "enable always", "disable".'
+                f"Invalid enable_or_disable value {enable_or_disable}. " 'Accepted values: "enable always", "disable".'
             )
 
         # Get the list of tables.
         # 'r' is for relation in pg_class.relkind.
-        tables = self._find_objects('r', self.cfg['bucardo']['replication_objects'])
+        tables = self._find_objects("r", self.cfg["bucardo"]["replication_objects"])
 
         # The bucardo trigger that will kick off a notification when
         # changes come in to the primary database
@@ -312,8 +308,8 @@ class Bucardo(Plugin):
                 raise
 
             if trigger_needs_toggling:
-                enabled = 'DISABLE TRIGGER' if enable_or_disable == 'disable' else 'ENABLE ALWAYS TRIGGER'
-                query = sql.SQL('ALTER TABLE {schema}.{table} {enabled} {trigger}').format(
+                enabled = "DISABLE TRIGGER" if enable_or_disable == "disable" else "ENABLE ALWAYS TRIGGER"
+                query = sql.SQL("ALTER TABLE {schema}.{table} {enabled} {trigger}").format(
                     schema=sql.Identifier(table[0]),
                     table=sql.Identifier(table[1]),
                     enabled=sql.SQL(enabled),
@@ -325,68 +321,64 @@ class Bucardo(Plugin):
                         conn.commit()
                 # If lock_timeout is blocking enabling, abort this attempt but continue gracefully to next table.
                 except psycopg2.errors.LockNotAvailable:
-                    print(f'Could not modify {trigger} on {table[0]}.{table[1]}')
+                    print(f"Could not modify {trigger} on {table[0]}.{table[1]}")
                     conn.rollback()
                 except Exception:
                     conn.rollback()
                     conn.close()
                     raise
         conn.close()
-        print('Triggers toggled.')
+        print("Triggers toggled.")
 
     def add_triggers(self):
         """Add triggers to tables on primary database."""
-        print('Adding triggers. Warning: this may cause an outage.')
+        print("Adding triggers. Warning: this may cause an outage.")
         # Default to never doing the initial data copy onto the secondary.
         one_time_copy = 0
 
         # Allow the user to override the copy setting.
-        map_copy_values = {
-            'never': 0,
-            'always': 1,
-            'empty': 2
-        }
+        map_copy_values = {"never": 0, "always": 1, "empty": 2}
 
-        if self.cfg['bucardo']['copy_data'] in map_copy_values:
-            one_time_copy = map_copy_values[self.cfg['bucardo']['copy_data']]
+        if self.cfg["bucardo"]["copy_data"] in map_copy_values:
+            one_time_copy = map_copy_values[self.cfg["bucardo"]["copy_data"]]
 
         # Actually configure replication, including trigger adding.
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'add sync {self.repl_name} relgroup={self.repl_name} '
-            f'dbs=primary_db:source,secondary_db:target onetimecopy={one_time_copy}'
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
+            f"add sync {self.repl_name} relgroup={self.repl_name} "
+            f"dbs=primary_db:source,secondary_db:target onetimecopy={one_time_copy}"
         )
 
         self._manage_triggers()
 
-        print('Done adding triggers.')
+        print("Done adding triggers.")
 
     def change_config(self):
         """Change bucardo config setting. Prompts for user input."""
         # Prompt for input.
-        self.setting_name = input('Name of the setting to change: ')
-        self.new_value = input('New value for the setting: ')
+        self.setting_name = input("Name of the setting to change: ")
+        self.new_value = input("New value for the setting: ")
         # Update the config using the bucardo daemon.
         os.system(
-            f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-            f'set {self.setting_name}={self.new_value}'
+            f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
+            f"set {self.setting_name}={self.new_value}"
         )
-        print('You will need to reload or restart bucardo for the change to take effect.')
+        print("You will need to reload or restart bucardo for the change to take effect.")
 
     def drop_triggers(self):
         """Drop triggers from primary database."""
-        print('Dropping triggers. Warning: this may cause an outage. Ctrl-c to abort.')
+        print("Dropping triggers. Warning: this may cause an outage. Ctrl-c to abort.")
         # Get the list of tables.
         # 'r' is for relation in pg_class.relkind.
-        tables = self._find_objects('r', self.cfg['bucardo']['replication_objects'])
+        tables = self._find_objects("r", self.cfg["bucardo"]["replication_objects"])
 
         # Bucardo puts three triggers on each table, with predictable names.
-        triggers = ['bucardo_delta', f'bucardo_kick_{self.repl_name}', f'bucardo_note_trunc_{self.repl_name}']
+        triggers = ["bucardo_delta", f"bucardo_kick_{self.repl_name}", f"bucardo_note_trunc_{self.repl_name}"]
         conn = psycopg2.connect(self.primary_schema_owner_conn_pg_format)
         # Drop each trigger from each table.
         for table in tables:
             for trigger in triggers:
-                query = sql.SQL('DROP TRIGGER IF EXISTS {trigger} ON {schema}.{table}').format(
+                query = sql.SQL("DROP TRIGGER IF EXISTS {trigger} ON {schema}.{table}").format(
                     trigger=sql.Identifier(trigger),
                     schema=sql.Identifier(table[0]),
                     table=sql.Identifier(table[1]),
@@ -396,7 +388,7 @@ class Bucardo(Plugin):
                         cur.execute(query)
                         conn.commit()
                 except psycopg2.errors.LockNotAvailable:
-                    print(f'Could not drop {trigger} from {table[0]}.{table[1]}')
+                    print(f"Could not drop {trigger} from {table[0]}.{table[1]}")
                     conn.rollback()
                 except Exception:
                     conn.rollback()
@@ -404,77 +396,77 @@ class Bucardo(Plugin):
                     raise
         conn.close()
 
-        print('Triggers dropped.')
+        print("Triggers dropped.")
 
     def install(self):
         """Install bucardo metadata."""
-        print('Installing bucardo.')
+        print("Installing bucardo.")
 
         return_code = os.WEXITSTATUS(
-            os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} install')
+            os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} install")
         )
 
         if return_code:
-            print('Bucardo not installed.')
+            print("Bucardo not installed.")
             return
         else:
-            print('Configuring logging.')
+            print("Configuring logging.")
             self._configure_bucardo()
 
-            print('Storing database connection info.')
+            print("Storing database connection info.")
             os.system(
-                f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-                f'add db primary_db {self.primary_conn_bucardo_format}'
+                f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
+                f"add db primary_db {self.primary_conn_bucardo_format}"
             )
 
             # Makedelta is a bucardo flag that is one component of setting up cascading replication.
-            makedelta = ''
-            if self.cfg['databases']['secondary'].get('cascade'):
-                makedelta = 'makedelta=1'
+            makedelta = ""
+            if self.cfg["databases"]["secondary"].get("cascade"):
+                makedelta = "makedelta=1"
             os.system(
-                f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} '
-                f'add db secondary_db {self.secondary_conn_bucardo_format} {makedelta}'
+                f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} "
+                f"add db secondary_db {self.secondary_conn_bucardo_format} {makedelta}"
             )
 
-            print('Adding metadata about the tables and sequences that will be replicated.')
+            print("Adding metadata about the tables and sequences that will be replicated.")
             self._add_table_sequence_metadata()
 
-            print('Bucardo installed.')
+            print("Bucardo installed.")
 
     def reload(self):
         """Reload bucardo config."""
-        os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} reload_config')
+        os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} reload_config")
 
     def restart(self):
         """Restart bucardo daemon."""
-        print('Restarting daemon.')
-        if self.cfg['bucardo'].get('asynchronous_kicking'):
+        print("Restarting daemon.")
+        if self.cfg["bucardo"].get("asynchronous_kicking"):
             self._async_kick_stop()
-        os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} restart')
-        if self.cfg['bucardo'].get('asynchronous_kicking'):
+        os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} restart")
+        if self.cfg["bucardo"].get("asynchronous_kicking"):
             self._async_kick_start()
-        print('Daemon restarted.')
+        print("Daemon restarted.")
 
     def start(self):
         """Start bucardo daemon."""
-        print('Starting daemon.')
-        os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} start')
-        if self.cfg['bucardo'].get('asynchronous_kicking'):
+        print("Starting daemon.")
+        os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} start")
+        if self.cfg["bucardo"].get("asynchronous_kicking"):
             self._async_kick_start()
-        print('Daemon started.')
+        print("Daemon started.")
 
     def status(self):
         """Report status of bucardo daemon."""
-        print('Checking status of bucardo.')
-        os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} status')
+        print("Checking status of bucardo.")
+        os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} status")
 
     def stop(self):
         """Stop bucardo daemon."""
-        print('Stopping daemon.')
-        os.system(f'bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} stop')
-        if self.cfg['bucardo'].get('asynchronous_kicking'):
+        print("Stopping daemon.")
+        os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} stop")
+        if self.cfg["bucardo"].get("asynchronous_kicking"):
             self._async_kick_stop()
-        print('Daemon stopped.')
+        print("Daemon stopped.")
 
     def uninstall(self):
         """Uninstall bucardo metadata.
@@ -482,11 +474,11 @@ class Bucardo(Plugin):
         If no bucardo database or schema is present, the uninstall method will
         gracefully perform no-op commands.
         """
-        print('Uninstalling bucardo.')
+        print("Uninstalling bucardo.")
 
-        print('Dropping the bucardo database.')
-        drop_db_cmd = sql.SQL('DROP DATABASE IF EXISTS {bucardo_db}').format(
-            bucardo_db=sql.Identifier(self.bucardo['dbname'])
+        print("Dropping the bucardo database.")
+        drop_db_cmd = sql.SQL("DROP DATABASE IF EXISTS {bucardo_db}").format(
+            bucardo_db=sql.Identifier(self.bucardo["dbname"])
         )
 
         conn = psycopg2.connect(self.bucardo_fallback_conn_pg_format)
@@ -499,8 +491,8 @@ class Bucardo(Plugin):
         finally:
             conn.close()
 
-        print('Dropping the bucardo schema inside the primary database.')
-        drop_schema_cmd = 'DROP SCHEMA IF EXISTS bucardo CASCADE'
+        print("Dropping the bucardo schema inside the primary database.")
+        drop_schema_cmd = "DROP SCHEMA IF EXISTS bucardo CASCADE"
 
         conn = psycopg2.connect(self.primary_conn_pg_format)
         try:
@@ -510,9 +502,9 @@ class Bucardo(Plugin):
         finally:
             conn.close()
 
-        if self.cfg['databases']['primary'].get('cascade'):
-            print('\n\033[1mWarning:\033[0m You may have just broken replication from A to B in your A->B->C setup.')
-            print('To get it working again, see docs/bucardo.md, Cascading Replication, Changing Topology.')
+        if self.cfg["databases"]["primary"].get("cascade"):
+            print("\n\033[1mWarning:\033[0m You may have just broken replication from A to B in your A->B->C setup.")
+            print("To get it working again, see docs/bucardo.md, Cascading Replication, Changing Topology.")
             time.sleep(3)
 
-        print('Uninstalled bucardo.')
+        print("Uninstalled bucardo.")

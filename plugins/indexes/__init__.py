@@ -15,9 +15,8 @@ import time
 
 import psycopg2
 import quantities as pq
-from psycopg2 import sql
-
 from plugins import Plugin
+from psycopg2 import sql
 
 
 class Indexes(Plugin):
@@ -51,13 +50,13 @@ class Indexes(Plugin):
     def __init__(self, cfg):
         """Create configuration settings that may not already be set.
 
-        The user can either define the relevant namespaces and tables specifically for
-        the indexes plugin, or the indexes plugin can draw on the settings in the
-        bucardo section of the config.  If neither exists, the script will throw an
-        error.
+        The user can either define the relevant namespaces and tables specifically for
+        the indexes plugin, or the indexes plugin can draw on the settings in the
+        bucardo section of the config.  If neither exists, the script will throw an
+        error.
 
-        The user can define a threshold for what constitutes a 'large' index.  If none
-        is set, a default of all indexes on a table 10 GB or larger will be set.
+        The user can define a threshold for what constitutes a 'large' index.  If none
+        is set, a default of all indexes on a table 10 GB or larger will be set.
 
         Keyword arguments:
         cfg: contents of the config file as a dictionary
@@ -65,19 +64,19 @@ class Indexes(Plugin):
         super(Indexes, self).__init__(cfg)
 
         # Override or inherit certain params from the parent, depending on the config.
-        self._set_inheritable_params('indexes')
+        self._set_inheritable_params("indexes")
 
         # Default to dropping indexes on tables larger than 10 GB.
-        if 'larger_than' not in cfg['indexes']:
-            cfg['indexes']['larger_than'] = '10 GB'
+        if "larger_than" not in cfg["indexes"]:
+            cfg["indexes"]["larger_than"] = "10 GB"
         self.cfg = cfg
 
     def _check_num_indexes(self, schemaname, tablename):
         """Return the number of index definitions backed up for a table.
 
-        This method queries the bucardo database to see how many index
+        This method queries the bucardo database to see how many index
         definitions exist for this table.
-        """
+        """
         query = sql.SQL(
             """SELECT COUNT(*)
             FROM manage_indexes.index_definitions id
@@ -99,26 +98,26 @@ class Indexes(Plugin):
         """Accept a human readable string like '8 MB' and return the number of bytes."""
 
         # Assume a larger_than value consists of digits followed by an optional space followed by letters.
-        decomposed_larger_than = re.split('([a-zA-Z]+)', larger_than.replace(' ', ''))
+        decomposed_larger_than = re.split("([a-zA-Z]+)", larger_than.replace(" ", ""))
         larger_than_magnitude = int(decomposed_larger_than[0])
         larger_than_unit = decomposed_larger_than[1]
         # Use the quantities module (pq) for conversion.
         converted_unit = larger_than_magnitude * getattr(pq, larger_than_unit)
-        converted_unit.units = 'byte'
+        converted_unit.units = "byte"
         # The quantities module produces output in the format of '10.0 B'.  We just want the 10.
-        converted_unit = re.sub(r'\..*', '', str(converted_unit))
+        converted_unit = re.sub(r"\..*", "", str(converted_unit))
         return converted_unit
 
     def _execute_ddl(self, recreate_or_drop):
         """Recreate the dropped indexes on the secondary."""
 
         # Retrieve the DDL from bucardo.
-        if recreate_or_drop == 'recreate':
-            query = sql.SQL('SELECT id.create_ddl FROM manage_indexes.index_definitions id WHERE id.repl_name = %s')
-            success_message = 'Indexes and uniqueness constraints recreated.'
-        elif recreate_or_drop == 'drop':
-            query = sql.SQL('SELECT id.drop_ddl FROM manage_indexes.index_definitions id WHERE id.repl_name = %s')
-            success_message = 'Indexes and uniqueness constraints dropped.'
+        if recreate_or_drop == "recreate":
+            query = sql.SQL("SELECT id.create_ddl FROM manage_indexes.index_definitions id WHERE id.repl_name = %s")
+            success_message = "Indexes and uniqueness constraints recreated."
+        elif recreate_or_drop == "drop":
+            query = sql.SQL("SELECT id.drop_ddl FROM manage_indexes.index_definitions id WHERE id.repl_name = %s")
+            success_message = "Indexes and uniqueness constraints dropped."
 
         conn = psycopg2.connect(self.bucardo_conn_pg_format)
         try:
@@ -169,7 +168,7 @@ class Indexes(Plugin):
         )
 
         # Convert the threshold to bytes with no unit specified, for passing to Postgres.
-        larger_than = self._convert_units(self.cfg['indexes']['larger_than'])
+        larger_than = self._convert_units(self.cfg["indexes"]["larger_than"])
 
         conn = psycopg2.connect(self.primary_conn_pg_format)
         constraint_definitions = []
@@ -190,7 +189,7 @@ class Indexes(Plugin):
         replication.
         """
 
-        if index_or_constraint == 'index':
+        if index_or_constraint == "index":
             query = sql.SQL(
                 """SELECT pi.schemaname, pi.tablename, pi.indexname, pi.indexdef AS create_ddl
                     , 'DROP INDEX ' || pi.schemaname || '.' || pi.indexname AS drop_ddl
@@ -206,7 +205,7 @@ class Indexes(Plugin):
                 AND pg_relation_size(pi.schemaname || '.' || pi.tablename) > %s
                 """
             )
-        elif index_or_constraint == 'constraint':
+        elif index_or_constraint == "constraint":
             query = sql.SQL(
                 """SELECT pn.nspname, prel.relname, pc.conname
                         , 'ALTER TABLE ' || pn.nspname || '.' || prel.relname ||
@@ -224,7 +223,7 @@ class Indexes(Plugin):
             )
 
         # Convert the threshold to bytes with no unit specified, for passing to Postgres.
-        larger_than = self._convert_units(self.cfg['indexes']['larger_than'])
+        larger_than = self._convert_units(self.cfg["indexes"]["larger_than"])
 
         conn = psycopg2.connect(self.primary_conn_pg_format)
         index_definitions = []
@@ -268,26 +267,26 @@ class Indexes(Plugin):
 
     def _wait_on_data_copy(self):
         """Grep the bucardo log to see how many syncs have finished, then wait for that number to increase."""
-        print('Waiting on initial data copy.', end='', flush=True)
+        print("Waiting on initial data copy.", end="", flush=True)
 
         initial_num_syncs = 0
         current_num_syncs = 0
-        with open(f'/var/log/bucardo/log.bucardo.{self.repl_name}', 'r') as file:
+        with open(f"/var/log/bucardo/log.bucardo.{self.repl_name}", "r") as file:
             for line in file.readlines():
-                if 'Total target rows copied:' in line:
+                if "Total target rows copied:" in line:
                     initial_num_syncs += 1
 
         while current_num_syncs <= initial_num_syncs:
             current_num_syncs = 0
-            with open(f'/var/log/bucardo/log.bucardo.{self.repl_name}', 'r') as file:
+            with open(f"/var/log/bucardo/log.bucardo.{self.repl_name}", "r") as file:
                 for line in file.readlines():
-                    if 'Total target rows copied:' in line:
+                    if "Total target rows copied:" in line:
                         current_num_syncs += 1
 
             time.sleep(60)
-            print('.', end='', flush=True)
+            print(".", end="", flush=True)
 
-        print('\nData copy finished.')
+        print("\nData copy finished.")
 
     def drop(self):
         """Drop large indexes on the secondary database.
@@ -310,13 +309,13 @@ class Indexes(Plugin):
         """
 
         # Find all the tables being replicated.  'r' is for "relation".
-        tables = self._find_objects('r', self.repl_objects)
+        tables = self._find_objects("r", self.repl_objects)
         safe_to_drop = False
         if tables:
             for table in tables:
                 # See if there's anything to drop for this table.
-                index_definitions = self._get_index_constraint_defs(table, 'index')
-                constraint_definitions = self._get_index_constraint_defs(table, 'constraint')
+                index_definitions = self._get_index_constraint_defs(table, "index")
+                constraint_definitions = self._get_index_constraint_defs(table, "constraint")
                 all_indexes = index_definitions + constraint_definitions
 
                 if all_indexes:
@@ -328,24 +327,24 @@ class Indexes(Plugin):
 
                     stored_indexes_count = self._check_num_indexes(table[0], table[1])
                     if expected_indexes_count == stored_indexes_count:
-                        print(f'DDL for {table[0]}.{table[1]} backed up in the bucardo database.')
+                        print(f"DDL for {table[0]}.{table[1]} backed up in the bucardo database.")
                         safe_to_drop = True
                     else:
                         raise Exception(
-                            f'Tried to store {expected_indexes_count} index(es) for {table[0]}.{table[1]} '
-                            'in manage_indexes.index_definitions on the bucardo database, '
-                            f'but {stored_indexes_count} index definition(s) were stored instead. '
-                            'Aborting without dropping indexes. Please investigate.'
+                            f"Tried to store {expected_indexes_count} index(es) for {table[0]}.{table[1]} "
+                            "in manage_indexes.index_definitions on the bucardo database, "
+                            f"but {stored_indexes_count} index definition(s) were stored instead. "
+                            "Aborting without dropping indexes. Please investigate."
                         )
                 else:
-                    print(f'No large indexes or uniqueness constraints found on {table[0]}.{table[1]}.')
+                    print(f"No large indexes or uniqueness constraints found on {table[0]}.{table[1]}.")
 
         else:
-            print('No tables found.')
+            print("No tables found.")
         # Drop the indexes and constraints.
         if safe_to_drop:
-            print('\nDropping large indexes and constraints...')
-            self._execute_ddl('drop')
+            print("\nDropping large indexes and constraints...")
+            self._execute_ddl("drop")
 
     def install(self):
         """Install the dependencies for index management on the bucardo database.
@@ -353,8 +352,8 @@ class Indexes(Plugin):
         Creates a schema and a table in the bucardo database by loading a file
         that contains the DDL.
         """
-        print('Installing dependencies.')
-        with open('plugins/indexes/custom_manage_indexes.sql', 'r') as file:
+        print("Installing dependencies.")
+        with open("plugins/indexes/custom_manage_indexes.sql", "r") as file:
             sql = file.read()
         conn = psycopg2.connect(self.bucardo_conn_pg_format)
         try:
@@ -363,7 +362,7 @@ class Indexes(Plugin):
                 conn.commit()
         finally:
             conn.close()
-        print('Dependencies installed. You may now drop indexes and recreate them later.')
+        print("Dependencies installed. You may now drop indexes and recreate them later.")
 
     def recreate(self):
         """Recreate dropped indexes on the secondary database.
@@ -382,11 +381,11 @@ class Indexes(Plugin):
         `manage_indexes` schema on the bucardo database.
         """
         user_cmd = input(
-            'Do you want to wait until the initial data copy has finished? '
-            'If no, the indexes will be recreated immediately. [y/n]: '
+            "Do you want to wait until the initial data copy has finished? "
+            "If no, the indexes will be recreated immediately. [y/n]: "
         )
         print()
-        if user_cmd == 'y':
+        if user_cmd == "y":
             self._wait_on_data_copy()
-        self._execute_ddl('recreate')
+        self._execute_ddl("recreate")
         print()

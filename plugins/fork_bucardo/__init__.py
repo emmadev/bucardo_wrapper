@@ -26,6 +26,7 @@ class ForkBucardo(Plugin):
     Methods exported:
     apply_changes: Loop over the changes in the config and apply them via sed.
     """
+
     def __init__(self, cfg):
         """Create aliases for configuration settings.
 
@@ -33,35 +34,23 @@ class ForkBucardo(Plugin):
         cfg: contents of the config file as a dictionary
         """
         super(ForkBucardo, self).__init__(cfg)
-        self.fork_cfg = cfg['fork_bucardo']
+        self.fork_cfg = cfg["fork_bucardo"]
         self.cfg = cfg
 
     def _update_file(self, filename, pattern, replacement):
         """Change a line of code in a file using sed."""
 
         try:
-            subprocess.run(
-                [
-                    'sudo', '/bin/sed', '-i',
-                    f's/{pattern}/{replacement}/',
-                    f'{filename}'
-                ],
-                check=True
-            )
+            subprocess.run(["sudo", "/bin/sed", "-i", f"s/{pattern}/{replacement}/", f"{filename}"], check=True)
         except subprocess.CalledProcessError:
-            print(
-                f'Could not modify {filename} due to a permission error. '
-            )
+            print(f"Could not modify {filename} due to a permission error. ")
             return
 
     def apply_changes(self):
         """Loop over the changes in the config and apply them as regular expressions."""
         for key in self.fork_cfg:
-            filename = self.fork_cfg[key]['file']
-            pattern = self.fork_cfg[key]['pattern']
-            replacement = self.fork_cfg[key]['replacement']
+            filename = self.fork_cfg[key]["file"]
+            pattern = self.fork_cfg[key]["pattern"]
+            replacement = self.fork_cfg[key]["replacement"]
             self._update_file(filename, pattern, replacement)
-            print(
-                f'Change {key} applied. '
-                'If bucardo is running, it must be restarted for the change to take effect.'
-            )
+            print(f"Change {key} applied. If bucardo is running, it must be restarted for the change to take effect.")

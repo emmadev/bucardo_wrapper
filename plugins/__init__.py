@@ -13,7 +13,7 @@ import psycopg2.extras
 from psycopg2 import sql
 
 
-class Plugin():
+class Plugin:
     """Parent class for individual bucardo plugins.
 
     Each plugin should be created as a subclass of the Plugin class.
@@ -52,50 +52,45 @@ class Plugin():
         """
         # Default dbname value, the one that the open source Bucardo project requires.
         # This can only be overridden by using the concurrency plugin.
-        if (cfg.get('concurrency')
-                and 'bucardo_dbname' in cfg['concurrency']
-                and 'concurrency' in cfg['plugins']):
+        if cfg.get("concurrency") and "bucardo_dbname" in cfg["concurrency"] and "concurrency" in cfg["plugins"]:
             # Allow the user to set a custom bucardo database, but only if they've
             # invoked the concurrency plugin.
-            cfg['databases']['bucardo']['dbname'] = cfg['concurrency']['bucardo_dbname']
+            cfg["databases"]["bucardo"]["dbname"] = cfg["concurrency"]["bucardo_dbname"]
         else:
             # Custom bucardo databases won't work out of the box, because
             # bucardo doesn't support them, so hard-code to 'bucardo'.
-            cfg['databases']['bucardo']['dbname'] = 'bucardo'
+            cfg["databases"]["bucardo"]["dbname"] = "bucardo"
 
         # Convert parts of the config data to variables with simpler names.
-        self.bucardo = cfg['databases']['bucardo']
-        self.primary = cfg['databases']['primary']
-        self.secondary = cfg['databases']['secondary']
-        self.repl_name = cfg['bucardo']['replication_name']
+        self.bucardo = cfg["databases"]["bucardo"]
+        self.primary = cfg["databases"]["primary"]
+        self.secondary = cfg["databases"]["secondary"]
+        self.repl_name = cfg["bucardo"]["replication_name"]
 
         # This is a psycopg2 connection string the regular bucardo database.  The
         # regular bucardo db is used for most purposes.
-        self.bucardo_conn_pg_format = self._connect(self.bucardo, user=self.bucardo['database_owner'])
+        self.bucardo_conn_pg_format = self._connect(self.bucardo, user=self.bucardo["database_owner"])
 
         # This is the conn string for the fallback database, used when the regular
         # bucardo database doesn't exist yet, or we need to drop it.
         self.bucardo_fallback_conn_pg_format = self._connect(
             self.bucardo,
-            dbname=self.bucardo['fallback_db'],
-            user=self.bucardo['database_owner'],
+            dbname=self.bucardo["fallback_db"],
+            user=self.bucardo["database_owner"],
         )
-        self.primary_conn_pg_format = self._connect(self.primary, user=self.primary['database_owner'])
-        # This is a psycopg2 conn string for the primary database, used when we need to
-        # perform DDL on replicated tables, there isn't a superuser because it's RDS,
-        # and the "superuser" doesn't have the necessary permissions on the relevant
-        # tables.
-        self.primary_schema_owner_conn_pg_format = \
-            self._connect(self.primary, user=self.primary['schema_owner'])
+        self.primary_conn_pg_format = self._connect(self.primary, user=self.primary["database_owner"])
+        # This is a psycopg2 conn string for the secondary, used when we need to perform
+        # DDL on replicated tables, there isn't a superuser because it's RDS, and the
+        # "superuser" doesn't have the necessary permissions on the relevant tables.
+        self.primary_schema_owner_conn_pg_format = self._connect(self.primary, user=self.primary["schema_owner"])
         # This is a psycogp2 conn string for the secondary database, used when we need
         # "superuser" privs on an RDS database.
-        self.secondary_db_owner_conn_pg_format = self._connect(self.secondary, user=self.secondary['database_owner'])
+        self.secondary_db_owner_conn_pg_format = self._connect(self.secondary, user=self.secondary["database_owner"])
 
         # This is a psycopg2 conn string for the secondary, used when we need to perform
         # DDL on replicated tables, there isn't a superuser because it's RDS, and the
         # "superuser" doesn't have the necessary permissions on the relevant tables.
-        self.secondary_schema_owner_conn_pg_format = \
-            self._connect(self.secondary, user=self.secondary['schema_owner'])
+        self.secondary_schema_owner_conn_pg_format = self._connect(self.secondary, user=self.secondary["schema_owner"])
 
         # Allow users to ctrl-c out of a psycopg2 query.
         psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
@@ -121,27 +116,27 @@ class Plugin():
         replication_objects -- a dictionary containing the replication_objects from the config file
         """
         replication_object_lists = {}
-        where_clause = ''
+        where_clause = ""
 
-        if replication_objects['namespace_include']:
-            where_clause = f'{where_clause}\n\t\tAND pn.nspname IN %(namespace_include)s'
-            replication_object_lists['namespace_include'] = tuple(replication_objects['namespace_include'])
+        if replication_objects["namespace_include"]:
+            where_clause = f"{where_clause}\n\t\tAND pn.nspname IN %(namespace_include)s"
+            replication_object_lists["namespace_include"] = tuple(replication_objects["namespace_include"])
 
-        if replication_objects['namespace_exclude']:
-            where_clause = f'{where_clause}\n\t\tAND pn.nspname NOT IN %(namespace_exclude)s'
-            replication_object_lists['namespace_exclude'] = tuple(replication_objects['namespace_exclude'])
+        if replication_objects["namespace_exclude"]:
+            where_clause = f"{where_clause}\n\t\tAND pn.nspname NOT IN %(namespace_exclude)s"
+            replication_object_lists["namespace_exclude"] = tuple(replication_objects["namespace_exclude"])
 
-        if replication_objects['table_include']:
-            where_clause = f'{where_clause}\n\t\tAND pc.relname IN %(table_include)s'
-            replication_object_lists['table_include'] = tuple(replication_objects['table_include'])
+        if replication_objects["table_include"]:
+            where_clause = f"{where_clause}\n\t\tAND pc.relname IN %(table_include)s"
+            replication_object_lists["table_include"] = tuple(replication_objects["table_include"])
 
-        if replication_objects['table_exclude']:
-            where_clause = f'{where_clause}\n\t\tAND pc.relname NOT IN %(table_exclude)s'
-            replication_object_lists['table_exclude'] = tuple(replication_objects['table_exclude'])
+        if replication_objects["table_exclude"]:
+            where_clause = f"{where_clause}\n\t\tAND pc.relname NOT IN %(table_exclude)s"
+            replication_object_lists["table_exclude"] = tuple(replication_objects["table_exclude"])
 
         return where_clause, replication_object_lists
 
-    def _connect(self, conn, prefix='', include_dashes=False, **kwargs):
+    def _connect(self, conn, prefix="", include_dashes=False, **kwargs):
         """Return a connection string suitable for psycopg2 or bucardo use.
 
         psycopg2 format: dbname=my_db user=my_user...
@@ -157,14 +152,14 @@ class Plugin():
         kwargs -- key-value pairs that override individual pairs in the conn dictionary
 
         """
-        user = conn['user'] if kwargs.get('user') is None else kwargs.get('user')
-        dbname = conn['dbname'] if kwargs.get('dbname') is None else kwargs.get('dbname')
-        host = conn['host'] if kwargs.get('host') is None else kwargs.get('host')
-        port = conn['port'] if kwargs.get('port') is None else kwargs.get('port')
-        dashes = '--' if include_dashes else ''
+        user = conn["user"] if kwargs.get("user") is None else kwargs.get("user")
+        dbname = conn["dbname"] if kwargs.get("dbname") is None else kwargs.get("dbname")
+        host = conn["host"] if kwargs.get("host") is None else kwargs.get("host")
+        port = conn["port"] if kwargs.get("port") is None else kwargs.get("port")
+        dashes = "--" if include_dashes else ""
         return (
-            f'{dashes}dbname={dbname} {dashes}{prefix}user={user} '
-            f'{dashes}{prefix}host={host} {dashes}{prefix}port={port}'
+            f"{dashes}dbname={dbname} {dashes}{prefix}user={user} "
+            f"{dashes}{prefix}host={host} {dashes}{prefix}port={port}"
         )
 
     def _find_objects(self, datatype, namespaces_tables):
@@ -187,6 +182,9 @@ class Plugin():
         """
 
         where_clause, replication_object_lists = self._compute_where_clause(namespaces_tables)
+        inherit_clause = ""
+        if datatype != "p":
+            inherit_clause = " AND pi.inhrelid IS NULL"
         query = sql.SQL(
             f"""SELECT * FROM (
                 SELECT pn.nspname, pc.relname AS fully_qual_name
@@ -194,8 +192,9 @@ class Plugin():
                     JOIN pg_namespace pn ON pn.OID = pc.relnamespace
                     LEFT OUTER JOIN pg_inherits pi ON pi.inhparent = pc.OID
                 WHERE pc.relkind = '{datatype}'
-                    AND pi.inhrelid IS NULL
+                    {inherit_clause}
                     {where_clause}
+                GROUP BY pn.nspname, pc.relname
                 ) results
             WHERE fully_qual_name IS NOT NULL"""
         )
@@ -228,7 +227,7 @@ class Plugin():
         return [
             method
             for method in dict(inspect.getmembers(self, inspect.isfunction))
-            if not method.startswith(('_'))  # Filter out semiprivate methods.
+            if not method.startswith(("_"))  # Filter out semiprivate methods.
         ]
 
     def _set_inheritable_params(self, plugin_class):
@@ -247,15 +246,15 @@ class Plugin():
         Keyword arguments:
         plugin_class -- the name of the plugin class that needs to inherit settings
         """
-        overridable_params = ['replication_objects']
+        overridable_params = ["replication_objects"]
         for param in overridable_params:
             # If we haven't overridden the param, use the one in bucardo.
-            if param not in self.cfg[plugin_class] and param in self.cfg['bucardo']:
-                self.cfg[plugin_class][param] = self.cfg['bucardo'][param]
+            if param not in self.cfg[plugin_class] and param in self.cfg["bucardo"]:
+                self.cfg[plugin_class][param] = self.cfg["bucardo"][param]
             # If we haven't overridden and the param doesn't exist in bucardo, throw an error.
             elif param not in self.cfg[plugin_class]:
                 raise Exception(
                     f'In the config file, either "bucardo" or "{plugin_class}" must have a "{param}" value. '
-                    'Please make sure that is set and try again.'
+                    "Please make sure that is set and try again."
                 )
-        self.repl_objects = self.cfg[plugin_class]['replication_objects']
+        self.repl_objects = self.cfg[plugin_class]["replication_objects"]

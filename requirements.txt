@@ -1,4 +1,9 @@
 PyYAML>=5.4.1,<6
+black
+flake8-bugbear
+flake8==6.*
+isort==5.*
 numpy # required by quantities
+pep8-naming==0.*
 psycopg2-binary>=2.8.6,<3
 quantities>=0.12.4,<1

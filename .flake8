@@ -1,0 +1,39 @@
+[flake8]
+max-line-length = 120
+max-complexity = 10
+ignore =
+    # Line break occurred before a binary operator
+    W503
+exclude =
+    # Directories to be ignored
+    .github
+    .git
+    .idea
+    .pytest_cache
+    __pycache__
+    node_modules
+    xunit_results
+    # File types to be ignored
+    *.css
+    *.html
+    *.in
+    *.ini
+    *.js
+    *.json
+    *.md
+    *.pyc
+    *.rdb
+    *.sh
+    *.sql
+    *.toml
+    *.txt
+    *.xml
+    *.yml
+    *.zip
+    # Files to ignore
+    .coverage
+    .flake8
+    .gitignore
+    .nvmrc
+    Dockerfile
+    Jenkinsfile

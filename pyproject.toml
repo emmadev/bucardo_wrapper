@@ -1,0 +1,14 @@
+[tool.black]
+line-length = 120
+target-version = ["py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+combine_as_imports = true
+include_trailing_comma = true
+line_length = 120
+multi_line_output = 3
+no_lines_before = "LOCALFOLDER"
+py_version = 39
+remove_redundant_aliases = true
+supported_extensions = ["py"]

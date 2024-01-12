@@ -57,24 +57,18 @@ class Concurrency(Plugin):
         """
 
         # The code only needs to be updated once per host, so check that the file contents don't already match.
-        if not filecmp.cmp(filename, '/usr/bin/bucardo'):
+        if not filecmp.cmp(filename, "/usr/bin/bucardo"):
             try:
-                subprocess.run(
-                    [
-                        'sudo', '/bin/cp',
-                        f'{filename}', '/usr/bin/bucardo'
-                    ],
-                    check=True
-                )
+                subprocess.run(["sudo", "/bin/cp", f"{filename}", "/usr/bin/bucardo"], check=True)
             except subprocess.CalledProcessError:
                 print(
-                    f'Could not copy {filename} to `/usr/bin/bucardo` due to a permission error. '
-                    'Make sure that has been done at least once on this host.'
+                    f"Could not copy {filename} to `/usr/bin/bucardo` due to a permission error. "
+                    "Make sure that has been done at least once on this host."
                 )
                 return
-            print('/usr/bin/bucardo successfully updated.')
+            print("/usr/bin/bucardo successfully updated.")
         else:
-            print('/usr/bin/bucardo already correct. No action needed.')
+            print("/usr/bin/bucardo already correct. No action needed.")
 
     def install(self):
         """Install the dependencies that allow custom bucardo database names.
@@ -91,18 +85,18 @@ class Concurrency(Plugin):
         # This file is a slightly modified variant on the bucardo schema as provided by
         # the Bucardo project.  Instead of a hard-coded name, the revised version has a
         # variable string.
-        with open('plugins/concurrency/forked_bucardo_schema.sql', 'r') as file:
+        with open("plugins/concurrency/forked_bucardo_schema.sql", "r") as file:
             # Replace all instances of the variable with the database name provided in the wrapper config.
-            data = file.read().replace(':bucardo_database', f'{self.bucardo["dbname"]}')
+            data = file.read().replace(":bucardo_database", f'{self.bucardo["dbname"]}')
         # Write the file to the location that bucardo loads its schema from.
-        with open('/usr/local/share/bucardo/bucardo.schema', 'w') as file:
+        with open("/usr/local/share/bucardo/bucardo.schema", "w") as file:
             file.write(data)
 
-        print('/usr/local/share/bucardo/bucardo.schema up to date.')
+        print("/usr/local/share/bucardo/bucardo.schema up to date.")
 
         # This file is the bucardo executable, modified with a one-word change
         # to turn a hard-coded 'bucardo' into a variable for the dbname.
-        self._update_usr_bin_bucardo('plugins/concurrency/forked_bucardo')
+        self._update_usr_bin_bucardo("plugins/concurrency/forked_bucardo")
 
     def uninstall(self):
         """Remove the dependencies that allow custom bucardo database names.
@@ -119,13 +113,13 @@ class Concurrency(Plugin):
         `concurrency` section of the config file.
         """
         # This file contains the bucardo schema as provided by the Bucardo project.
-        with open('plugins/concurrency/original_bucardo_schema.sql', 'r') as file:
+        with open("plugins/concurrency/original_bucardo_schema.sql", "r") as file:
             data = file.read()
         # Write the file to the location that bucardo loads its schema from.
-        with open('/usr/local/share/bucardo/bucardo.schema', 'w') as file:
+        with open("/usr/local/share/bucardo/bucardo.schema", "w") as file:
             file.write(data)
 
-        print('/usr/local/share/bucardo/bucardo.schema up to date.')
+        print("/usr/local/share/bucardo/bucardo.schema up to date.")
 
         # This file is the bucardo executable.
-        self._update_usr_bin_bucardo('plugins/concurrency/original_bucardo')
+        self._update_usr_bin_bucardo("plugins/concurrency/original_bucardo")

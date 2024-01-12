@@ -9,7 +9,6 @@ Classes exported:
 Retry: Add or remove bucardo triggers with graceful timeout and retry options.
 """
 import psycopg2
-
 from plugins import Plugin
 from plugins.bucardo import Bucardo
 
@@ -48,13 +47,13 @@ class Retry(Plugin):
         super(Retry, self).__init__(cfg)
         self.bucardo_instance = Bucardo(cfg)
         self.cfg = cfg
-        self.primary_user = cfg['databases']['primary']['database_owner']
-        self.repl_name = cfg['bucardo']['replication_name']
-        self.timeout = cfg['retry']['timeout']
+        self.primary_user = cfg["databases"]["primary"]["database_owner"]
+        self.repl_name = cfg["bucardo"]["replication_name"]
+        self.timeout = cfg["retry"]["timeout"]
 
     def _check_for_syncs(self):
         """Check the bucardo database to see if a sync exists.  Return True or False."""
-        query = 'SELECT * FROM bucardo.sync LIMIT 1'
+        query = "SELECT * FROM bucardo.sync LIMIT 1"
         conn = psycopg2.connect(self.bucardo_conn_pg_format)
         try:
             with conn.cursor() as cur:
@@ -81,7 +80,7 @@ class Retry(Plugin):
         user -- the postgres user whose timeout value should be changed
         timeout_value -- the new timeout value (either DEFAULT or some number of milliseconds)
         """
-        query = f'ALTER ROLE {user} SET lock_timeout = {timeout_value}'
+        query = f"ALTER ROLE {user} SET lock_timeout = {timeout_value}"
         conn = psycopg2.connect(self.primary_conn_pg_format)
         try:
             with conn.cursor() as cur:
@@ -102,7 +101,7 @@ class Retry(Plugin):
         non-default lock_timeout value, then this may cause the wrong value to be set.
         You are welcome to submit a PR in that case.
         """
-        print('Adding triggers.')
+        print("Adding triggers.")
         self._set_timeout(self.primary_user, self.timeout)
 
         # Which bucardo function to call depends on whether we just need to add
@@ -117,7 +116,7 @@ class Retry(Plugin):
                 with conn.cursor() as cur:
                     cur.execute(query)
                     for notice in conn.notices:
-                        print(notice, end='')
+                        print(notice, end="")
             finally:
                 conn.close()
 
@@ -127,11 +126,11 @@ class Retry(Plugin):
         else:
             self.bucardo_instance.add_triggers()
 
-        self._set_timeout(self.primary_user, 'DEFAULT')
+        self._set_timeout(self.primary_user, "DEFAULT")
 
         print(
-            'Attempted to add triggers. Check the output above for warnings about missing triggers. '
-            'If you see any, just run add_triggers again. If there are no warnings, you should be good to go.'
+            "Attempted to add triggers. Check the output above for warnings about missing triggers. "
+            "If you see any, just run add_triggers again. If there are no warnings, you should be good to go."
         )
 
     def drop_triggers(self):
@@ -145,13 +144,13 @@ class Retry(Plugin):
         non-default lock_timeout value, then this may cause the wrong value to be set.
         You are welcome to submit a PR in that case.
         """
-        print('Dropping triggers.')
+        print("Dropping triggers.")
         self._set_timeout(self.primary_user, self.timeout)
         self.bucardo_instance.drop_triggers()
-        self._set_timeout(self.primary_user, 'DEFAULT')
+        self._set_timeout(self.primary_user, "DEFAULT")
         print(
-            'Attempted to drop triggers. Check the output above for warnings about missing triggers. '
-            'If you see any, just run try_drop again. If there are no warnings, you should be good to go.'
+            "Attempted to drop triggers. Check the output above for warnings about missing triggers. "
+            "If you see any, just run try_drop again. If there are no warnings, you should be good to go."
         )
 
     def install(self):
@@ -165,10 +164,10 @@ class Retry(Plugin):
         version of the function and is not installed with bucardo.  You must install
         Try::Tiny yourself.
         """
-        print('Installing dependencies.')
+        print("Installing dependencies.")
         # Read in the definition of a SQL stored procedure.
-        custom_logic_file = 'plugins/retry/custom_validate_sync.sql'
-        with open(custom_logic_file, 'r') as file:
+        custom_logic_file = "plugins/retry/custom_validate_sync.sql"
+        with open(custom_logic_file, "r") as file:
             query = file.read()
 
         # Load the stored procedure into bucardo, replacing the one provided by the Bucardo project.
@@ -180,8 +179,8 @@ class Retry(Plugin):
         finally:
             conn.close()
         print(
-            'Dependencies installed, except for the Perl Try::Tiny module. '
-            'Make sure that module is installed before proceeding.'
+            "Dependencies installed, except for the Perl Try::Tiny module. "
+            "Make sure that module is installed before proceeding."
         )
 
     def uninstall(self):
@@ -195,10 +194,10 @@ class Retry(Plugin):
         version of the function and is not installed with bucardo.  You must uninstall
         Try::Tiny yourself.
         """
-        print('Uninstalling dependencies.')
+        print("Uninstalling dependencies.")
         # Read in the definition of a SQL stored procedure.
-        custom_logic_file = 'plugins/retry/original_validate_sync.sql'
-        with open(custom_logic_file, 'r') as file:
+        custom_logic_file = "plugins/retry/original_validate_sync.sql"
+        with open(custom_logic_file, "r") as file:
             query = file.read()
 
         # Load the stored procedure into bucardo, replacing the modified one.
@@ -209,6 +208,4 @@ class Retry(Plugin):
                 conn.commit()
         finally:
             conn.close()
-        print(
-            'Dependencies removed, except for the Perl Try::Tiny module. '
-        )
+        print("Dependencies removed, except for the Perl Try::Tiny module. ")
