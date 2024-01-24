@@ -127,11 +127,7 @@ class Retry(Plugin):
             self.bucardo_instance.add_triggers()
 
         self._set_timeout(self.primary_user, "DEFAULT")
-
-        print(
-            "Attempted to add triggers. Check the output above for warnings about missing triggers. "
-            "If you see any, just run add_triggers again. If there are no warnings, you should be good to go."
-        )
+        print("Attempted to add triggers.")
 
     def drop_triggers(self):
         """Drop triggers on replicated tables on the primary database.
@@ -148,10 +144,7 @@ class Retry(Plugin):
         self._set_timeout(self.primary_user, self.timeout)
         self.bucardo_instance.drop_triggers()
         self._set_timeout(self.primary_user, "DEFAULT")
-        print(
-            "Attempted to drop triggers. Check the output above for warnings about missing triggers. "
-            "If you see any, just run try_drop again. If there are no warnings, you should be good to go."
-        )
+        print("Attempted to drop triggers.")
 
     def install(self):
         """Install the dependencies for retry logic on the bucardo database.
@@ -209,3 +202,51 @@ class Retry(Plugin):
         finally:
             conn.close()
         print("Dependencies removed, except for the Perl Try::Tiny module. ")
+
+    def _validate_install(self):
+        print("Check: bucardo validate_sync() function is using the new logic...", end="")
+
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM pg_proc WHERE proname= 'validate_sync' AND prosrc LIKE '%Try::Tiny%'")
+                rowcount = cur.fetchone()
+        finally:
+            conn.close()
+        if rowcount[0]:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Bucardo validate_sync() function does not require Try::Tiny.")
+            raise Exception()
+
+    def _validate_uninstall(self):
+        print("Check: bucardo validate_sync() function is using the old logic...", end="")
+
+        conn = psycopg2.connect(self.bucardo_conn_pg_format)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM pg_proc WHERE proname= 'validate_sync' AND prosrc LIKE '%Try::Tiny%'")
+                rowcount = cur.fetchone()
+        finally:
+            conn.close()
+        if not rowcount[0]:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Bucardo validate_sync() function requires Try::Tiny.")
+            raise Exception()
+
+    def _validate_add_triggers(self):
+        try:
+            self.bucardo_instance._validate_add_triggers()
+        except Exception:
+            print("You may need to rerun retry.add_triggers.")
+            raise Exception()
+
+    def _validate_drop_triggers(self):
+        try:
+            self.bucardo_instance._validate_drop_triggers()
+        except Exception:
+            print("You may need to rerun retry.drop_triggers.")
+            raise Exception()

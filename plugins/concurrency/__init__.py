@@ -92,8 +92,6 @@ class Concurrency(Plugin):
         with open("/usr/local/share/bucardo/bucardo.schema", "w") as file:
             file.write(data)
 
-        print("/usr/local/share/bucardo/bucardo.schema up to date.")
-
         # This file is the bucardo executable, modified with a one-word change
         # to turn a hard-coded 'bucardo' into a variable for the dbname.
         self._update_usr_bin_bucardo("plugins/concurrency/forked_bucardo")
@@ -123,3 +121,39 @@ class Concurrency(Plugin):
 
         # This file is the bucardo executable.
         self._update_usr_bin_bucardo("plugins/concurrency/original_bucardo")
+
+    def _validate_install(self):
+        print("Check: /usr/local/share/bucardo/bucardo.schema up to date...", end="")
+        with open("/usr/local/share/bucardo/bucardo.schema", "r") as file:
+            old_name = file.read().find(":bucardo_database")
+        with open("/usr/local/share/bucardo/bucardo.schema", "r") as file:
+            new_name = file.read().find(f'{self.bucardo["dbname"]}')
+        if new_name != -1 and old_name == -1:
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Updating /usr/local/share/bucardo/bucardo.schema failed.\n")
+            raise Exception()
+        print("Check: /usr/bin/bucardo up to date...", end="")
+        if filecmp.cmp("plugins/concurrency/forked_bucardo", "/usr/bin/bucardo"):
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Installing /usr/bin/bucardo failed.\n")
+            raise Exception()
+
+    def _validate_uninstall(self):
+        print("Check: /usr/bin/bucardo up to date...", end="")
+        if filecmp.cmp("plugins/concurrency/original_bucardo", "/usr/bin/bucardo"):
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Installing /usr/bin/bucardo failed.\n")
+            raise Exception()
+        print("Check: /usr/local/share/bucardo/bucardo.schema up to date...", end="")
+        if filecmp.cmp("plugins/concurrency/original_bucardo_schema.sql", "/usr/local/share/bucardo/bucardo.schema"):
+            print("Pass.")
+        else:
+            print("Fail.")
+            print("ERROR: Installing /usr/local/share/bucardo/bucardo.schema failed.\n")
+            raise Exception()

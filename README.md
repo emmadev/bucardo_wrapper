@@ -58,12 +58,26 @@ after the first time.
 
 # Usage
 
-python wrapper.py [-c config\_file]
+python wrapper.py [-c config\_file] [-i|-l commands]
 
-# Menu
+# Modes
+
+There are two modes, -i for interactive and -l for list commands.
+
+You must choose one.
+
+If you choose interactive, you will be presented with a menu of commands and a
+prompt. You can select which command you want to enter.
+
+If you choose to list commands, you must pass in at least one command, which will
+then be executed.
+
+See the ##Interactive and ##List commands sections below.
+
+## Interactive
 
 The core aspect of the wrapper script is that it provides the user with a menu
-of functions with human-friendly names. The user is prompted for input.The user
+of functions with human-friendly names. The user is prompted for input. The user
 only has to enter the name of the function they want to execute in order for
 that function to be executed. All configuration is done in the config file. See
 the Config section for more detail.
@@ -107,6 +121,24 @@ Commands for mat\_views: Identify materialized views and refresh them on the sec
 &nbsp;&nbsp;**mat\_views.refresh:** Refresh materialized views.
 
 Enter the command you wish to run here, or type "exit": mat\_views.refresh
+
+## List commands
+
+If you pass in -l, you must pass in a space-separated list of commands to be executed.
+
+For example:
+
+```
+python wrapper.py -c config.yml -l "bucardo.install bucardo.add_triggers bucardo.start"
+```
+
+Bucardo will execute the command, run a validation check if there is one, and print out the results
+of the check. If the validation check passes, it will move on to the next command. If the validation
+check fails, the script will abort and not execute any more commands. If there is no validation check,
+it will treat that as passing and simply report that all checks passed, without supplying any details.
+
+If you want to know if a command has a validation check and what it's checking for, you will need to
+look at the source code.
 
 # Plugins
 
