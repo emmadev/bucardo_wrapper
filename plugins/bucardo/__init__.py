@@ -456,6 +456,8 @@ EOF"""
     def start(self):
         """Start bucardo daemon."""
         print("Starting daemon.")
+        # The piddir gets deleted after the bucardo server is restarted, and bucardo won't start without it.
+        os.system(f"mkdir -p {self.piddir}")
         os.system(f"bucardo {self.bucardo_opts} {self.bucardo_conn_bucardo_format} start")
         if self.cfg["bucardo"].get("asynchronous_kicking"):
             self._async_kick_start()
